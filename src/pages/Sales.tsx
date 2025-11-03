@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label"; // Added
+import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -17,7 +17,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"; // Added
+} from "@/components/ui/table";
 import {
   Dialog,
   DialogContent,
@@ -35,13 +35,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { useToast } from "@/hooks/use-toast"; // Added
+import { useToast } from "@/hooks/use-toast";
 
 interface Sale {
   id: number;
   invoice_number: string;
   total_amount: number;
-  sale_date: string;
+  sale_date: string; // This will be the raw ISO string
 }
 
 const SalesPage = () => {
@@ -53,15 +53,19 @@ const SalesPage = () => {
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingSale, setEditingSale] = useState<Sale | null>(null);
   const [saleToDelete, setSaleToDelete] = useState<Sale | null>(null);
-  const [form, setForm] = useState({ invoice_number: "", total_amount: "", sale_date: "" });
+
+  const [form, setForm] = useState({ total_amount: "", sale_date: "" });
+
   const [formLoading, setFormLoading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const { toast } = useToast(); // Added
+  const { toast } = useToast();
 
   const fetchSales = async () => {
     setLoading(true);
     setError(null);
-    const { data, error } = await supabase.from("sales").select("sales_id, invoice_number, total_amount, sale_date");
+    const { data, error } = await supabase
+      .from("sales")
+      .select("sales_id, invoice_number, total_amount, sale_date");
     if (error) {
       setError(error.message);
     } else {
@@ -70,8 +74,7 @@ const SalesPage = () => {
           id: s.sales_id,
           invoice_number: s.invoice_number,
           total_amount: s.total_amount,
-          // Format date for display
-          sale_date: new Date(s.sale_date).toLocaleDateString(), 
+          sale_date: s.sale_date,
         }))
       );
     }
@@ -83,7 +86,7 @@ const SalesPage = () => {
   }, []);
 
   const handleAddOpen = () => {
-    setForm({ invoice_number: "", total_amount: "", sale_date: "" });
+    setForm({ total_amount: "", sale_date: "" });
     setIsEditMode(false);
     setEditingSale(null);
     setFormError(null);
@@ -91,11 +94,11 @@ const SalesPage = () => {
   };
 
   const handleEditOpen = (sale: Sale) => {
-    // FIX 1: Format the date string to YYYY-MM-DD for the input
-    const formattedDate = sale.sale_date ? new Date(sale.sale_date).toISOString().split('T')[0] : "";
-    
+    const formattedDate = sale.sale_date
+      ? new Date(sale.sale_date).toISOString().split("T")[0]
+      : "";
+
     setForm({
-      invoice_number: sale.invoice_number,
       total_amount: sale.total_amount.toString(),
       sale_date: formattedDate,
     });
@@ -114,28 +117,34 @@ const SalesPage = () => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
+  // ---
+  //
+  // THIS FUNCTION IS NOW FIXED
+  //
+  // ---
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormLoading(true);
     setFormError(null);
-    if (!form.invoice_number || !form.total_amount || !form.sale_date) {
+
+    if (!form.total_amount || !form.sale_date) {
       setFormError("All fields are required.");
       setFormLoading(false);
       return;
     }
 
-    // Prepare data
-    const saleData = {
-      invoice_number: form.invoice_number,
-      total_amount: Number(form.total_amount),
-      sale_date: form.sale_date,
-      // Add other required fields from your DB with defaults
-      tax_amount: 0, 
-      discount_amount: 0,
-      net_amount: Number(form.total_amount)
-    };
-
     if (isEditMode && editingSale) {
+      // --- FIX 1: UPDATE LOGIC ---
+      // We must provide the invoice_number to satisfy TypeScript,
+      // even though we aren't changing it.
+      const saleData = {
+        invoice_number: editingSale.invoice_number, // Pass the existing one
+        total_amount: Number(form.total_amount),
+        sale_date: form.sale_date,
+        tax_amount: 0,
+        discount_amount: 0,
+      };
+
       const { error } = await supabase
         .from("sales")
         .update(saleData)
@@ -144,21 +153,38 @@ const SalesPage = () => {
       setFormLoading(false);
       if (error) {
         setFormError(error.message);
-        toast({ title: "Error", description: error.message, variant: "destructive" });
+        toast({
+          title: "Error",
+          description: error.message,
+          variant: "destructive",
+        });
       } else {
         setFormDialogOpen(false);
         toast({ title: "Success", description: "Sale record updated." });
         fetchSales();
       }
     } else {
-      const { error } = await supabase
-        .from("sales")
-        .insert([saleData]);
-      
+      // --- FIX 2: CREATE LOGIC ---
+      // We add a dummy invoice_number to satisfy TypeScript.
+      // The database trigger will overwrite this value.
+      const saleData = {
+        invoice_number: "PENDING", // This will be ignored and replaced by the trigger
+        total_amount: Number(form.total_amount),
+        sale_date: form.sale_date,
+        tax_amount: 0,
+        discount_amount: 0,
+      };
+
+      const { error } = await supabase.from("sales").insert([saleData]);
+
       setFormLoading(false);
       if (error) {
         setFormError(error.message);
-        toast({ title: "Error", description: error.message, variant: "destructive" });
+        toast({
+          title: "Error",
+          description: error.message,
+          variant: "destructive",
+        });
       } else {
         setFormDialogOpen(false);
         toast({ title: "Success", description: "Sale record created." });
@@ -171,7 +197,6 @@ const SalesPage = () => {
     if (!saleToDelete) return;
     setFormLoading(true);
 
-    // FIX 2: Must delete from 'sales_items' first
     const { error: itemsError } = await supabase
       .from("sales_items")
       .delete()
@@ -179,11 +204,14 @@ const SalesPage = () => {
 
     if (itemsError) {
       setFormLoading(false);
-      toast({ title: "Error", description: itemsError.message, variant: "destructive" });
+      toast({
+        title: "Error",
+        description: itemsError.message,
+        variant: "destructive",
+      });
       return;
     }
 
-    // Now we can delete from 'sales'
     const { error: saleError } = await supabase
       .from("sales")
       .delete()
@@ -191,7 +219,11 @@ const SalesPage = () => {
 
     setFormLoading(false);
     if (saleError) {
-      toast({ title: "Error", description: saleError.message, variant: "destructive" });
+      toast({
+        title: "Error",
+        description: saleError.message,
+        variant: "destructive",
+      });
       return;
     }
 
@@ -222,7 +254,9 @@ const SalesPage = () => {
         <CardContent>
           {loading ? (
             <div className="flex items-center justify-center py-8">
-              <span className="animate-pulse text-muted-foreground">Loading sales...</span>
+              <span className="animate-pulse text-muted-foreground">
+                Loading sales...
+              </span>
             </div>
           ) : error ? (
             <div className="flex items-center justify-center py-8">
@@ -230,34 +264,61 @@ const SalesPage = () => {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              {/* UPDATED: Using shadcn/ui Table */}
               <Table className="min-w-full border rounded-xl bg-card">
                 <TableHeader className="bg-muted/60">
                   <TableRow>
-                    <TableHead className="px-6 py-3 text-left font-medium text-muted-foreground">Invoice #</TableHead>
-                    <TableHead className="px-6 py-3 text-left font-medium text-muted-foreground">Total Amount</TableHead>
-                    <TableHead className="px-6 py-3 text-left font-medium text-muted-foreground">Sale Date</TableHead>
-                    <TableHead className="px-6 py-3 text-left font-medium text-muted-foreground">Actions</TableHead>
+                    <TableHead className="px-6 py-3 text-left font-medium text-muted-foreground">
+                      Invoice #
+                    </TableHead>
+                    <TableHead className="px-6 py-3 text-left font-medium text-muted-foreground">
+                      Total Amount
+                    </TableHead>
+                    <TableHead className="px-6 py-3 text-left font-medium text-muted-foreground">
+                      Sale Date
+                    </TableHead>
+                    <TableHead className="px-6 py-3 text-left font-medium text-muted-foreground">
+                      Actions
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {sales.length === 0 ? (
                     <TableRow>
-                      <TableCell className="px-6 py-4 text-center text-muted-foreground" colSpan={4}>
+                      <TableCell
+                        className="px-6 py-4 text-center text-muted-foreground"
+                        colSpan={4}
+                      >
                         No sales found.
                       </TableCell>
                     </TableRow>
                   ) : (
                     sales.map((sale) => (
-                      <TableRow key={sale.id} className="hover:bg-muted/20 transition">
-                        <TableCell className="px-6 py-4 font-medium">{sale.invoice_number}</TableCell>
-                        <TableCell className="px-6 py-4">${sale.total_amount.toFixed(2)}</TableCell>
-                        <TableCell className="px-6 py-4">{sale.sale_date}</TableCell>
+                      <TableRow
+                        key={sale.id}
+                        className="hover:bg-muted/20 transition"
+                      >
+                        <TableCell className="px-6 py-4 font-medium">
+                          {sale.invoice_number}
+                        </TableCell>
+                        <TableCell className="px-6 py-4">
+                          ${sale.total_amount.toFixed(2)}
+                        </TableCell>
+                        <TableCell className="px-6 py-4">
+                          {new Date(sale.sale_date).toLocaleDateString()}
+                        </TableCell>
                         <TableCell className="px-6 py-4 space-x-2">
-                          <Button size="sm" variant="secondary" onClick={() => handleEditOpen(sale)}>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => handleEditOpen(sale)}
+                          >
                             Edit
                           </Button>
-                          <Button size="sm" variant="destructive" onClick={() => handleDeleteOpen(sale)}>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => handleDeleteOpen(sale)}
+                          >
                             Delete
                           </Button>
                         </TableCell>
@@ -270,43 +331,77 @@ const SalesPage = () => {
           )}
         </CardContent>
       </Card>
-      
-      {/* UPDATED: Form now has Labels */}
+
       <Dialog open={formDialogOpen} onOpenChange={setFormDialogOpen}>
         <DialogContent className="max-w-md mx-auto">
           <DialogHeader>
-            <DialogTitle>{isEditMode ? "Edit Sale" : "Add New Sale"}</DialogTitle>
+            <DialogTitle>
+              {isEditMode ? "Edit Sale" : "Add New Sale"}
+            </DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-1">
-              <Label htmlFor="invoice_number">Invoice Number</Label>
-              <Input id="invoice_number" name="invoice_number" placeholder="e.g., INV-2025-001" value={form.invoice_number} onChange={handleChange} required />
-            </div>
+            {isEditMode && (
+              <div className="space-y-1">
+                <Label htmlFor="invoice_number_display">Invoice Number</Label>
+                <Input
+                  id="invoice_number_display"
+                  value={editingSale?.invoice_number}
+                  readOnly
+                  disabled
+                />
+              </div>
+            )}
+
             <div className="space-y-1">
               <Label htmlFor="total_amount">Total Amount</Label>
-              <Input id="total_amount" name="total_amount" type="number" min="0" step="0.01" placeholder="e.g., 129.99" value={form.total_amount} onChange={handleChange} required />
+              <Input
+                id="total_amount"
+                name="total_amount"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="e.g., 129.99"
+                value={form.total_amount}
+                onChange={handleChange}
+                required
+              />
             </div>
             <div className="space-y-1">
               <Label htmlFor="sale_date">Sale Date</Label>
-              <Input id="sale_date" name="sale_date" type="date" value={form.sale_date} onChange={handleChange} required />
+              <Input
+                id="sale_date"
+                name="sale_date"
+                type="date"
+                value={form.sale_date}
+                onChange={handleChange}
+                required
+              />
             </div>
-            {formError && <div className="text-destructive text-sm">{formError}</div>}
+            {formError && (
+              <div className="text-destructive text-sm">{formError}</div>
+            )}
             <DialogFooter>
               <Button type="submit" disabled={formLoading} className="w-full">
-                {formLoading ? (isEditMode ? "Updating..." : "Adding...") : (isEditMode ? "Update Sale" : "Add Sale")}
+                {formLoading
+                  ? isEditMode
+                    ? "Updating..."
+                    : "Adding..."
+                  : isEditMode
+                  ? "Update Sale"
+                  : "Add Sale"}
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
-      
+
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete the sale record and all its associated items.
-              This action cannot be undone.
+              This will permanently delete the sale record and all its associated
+              items. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
