@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import Index from "./pages/Index";
+import AlertsPage from "./pages/Alerts";
 import Auth from "./pages/Auth";
 import Products from "./pages/Products";
 import Inventory from "./pages/Inventory";
@@ -87,6 +88,22 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
+          <Route
+            path="/alerts"
+            element={
+              <ProtectedRoute>
+                <div className="min-h-screen bg-background">
+                  <Navbar />
+                  <div className="flex">
+                    <Sidebar />
+                    <main className="flex-1 p-6">
+                      <AlertsPage />
+                    </main>
+                  </div>
+                </div>
+              </ProtectedRoute>
+            }
+          />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

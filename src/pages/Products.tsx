@@ -45,6 +45,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"; // To hold Edit/Delete
 import { useToast } from "@/hooks/use-toast";
+import Fuse from "fuse.js";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"; // Import Table components
 
 // UPDATED: Interface no longer needs stock
@@ -70,7 +71,45 @@ interface Supplier {
 }
 
 const Products = () => {
+  // Sorting state
+  const [sortBy, setSortBy] = useState<"name"|"sku"|"category"|"price">("name");
+  const [sortDir, setSortDir] = useState<"asc"|"desc">("asc");
   const [products, setProducts] = useState<Product[]>([]);
+  const [search, setSearch] = useState("");
+  // Fuzzy search setup
+  const fuse = new Fuse(products, {
+    keys: ["name", "sku", "category"],
+    threshold: 0.4,
+    ignoreLocation: true,
+  });
+
+  // Compute filtered products for table
+  let filteredProducts = search.trim()
+    ? fuse.search(search).map(result => result.item)
+    : products;
+
+  // Sort filtered products
+  filteredProducts = [...filteredProducts].sort((a, b) => {
+    let valA = a[sortBy];
+    let valB = b[sortBy];
+    if (typeof valA === "string" && typeof valB === "string") {
+      valA = valA.toLowerCase();
+      valB = valB.toLowerCase();
+    }
+    if (valA < valB) return sortDir === "asc" ? -1 : 1;
+    if (valA > valB) return sortDir === "asc" ? 1 : -1;
+    return 0;
+  });
+
+  // Handle sort change
+  const handleSort = (col: "name"|"sku"|"category"|"price") => {
+    if (sortBy === col) {
+      setSortDir(sortDir === "asc" ? "desc" : "asc");
+    } else {
+      setSortBy(col);
+      setSortDir("asc");
+    }
+  };
   const [categories, setCategories] = useState<Category[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
@@ -334,6 +373,15 @@ const Products = () => {
               <CardDescription>All products in your inventory</CardDescription>
             </CardHeader>
             <CardContent>
+              {/* Search Filter - moved above table */}
+              <div className="mb-4 max-w-md">
+                <Input
+                  type="text"
+                  placeholder="Search products by name, SKU, or category..."
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                />
+              </div>
               {loading ? (
                 <div className="flex items-center justify-center py-8">
                   <span className="animate-pulse text-muted-foreground">
@@ -349,22 +397,42 @@ const Products = () => {
                   <table className="min-w-full border rounded-xl bg-card">
                     <thead className="bg-muted/60">
                       <tr>
-                        <th className="px-6 py-3 text-left font-medium text-muted-foreground">Name</th>
-                        <th className="px-6 py-3 text-left font-medium text-muted-foreground">SKU</th>
-                        <th className="px-6 py-3 text-left font-medium text-muted-foreground">Category</th>
-                        <th className="px-6 py-3 text-left font-medium text-muted-foreground">Price</th>
+                        <th
+                          className="px-6 py-3 text-left font-medium text-muted-foreground cursor-pointer select-none"
+                          onClick={() => handleSort("name")}
+                        >
+                          Name {sortBy === "name" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+                        </th>
+                        <th
+                          className="px-6 py-3 text-left font-medium text-muted-foreground cursor-pointer select-none"
+                          onClick={() => handleSort("sku")}
+                        >
+                          SKU {sortBy === "sku" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+                        </th>
+                        <th
+                          className="px-6 py-3 text-left font-medium text-muted-foreground cursor-pointer select-none"
+                          onClick={() => handleSort("category")}
+                        >
+                          Category {sortBy === "category" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+                        </th>
+                        <th
+                          className="px-6 py-3 text-left font-medium text-muted-foreground cursor-pointer select-none"
+                          onClick={() => handleSort("price")}
+                        >
+                          Price {sortBy === "price" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+                        </th>
                         <th className="px-6 py-3 text-left font-medium text-muted-foreground">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {products.length === 0 ? (
+                      {filteredProducts.length === 0 ? (
                         <tr>
                           <td className="px-6 py-4 text-center text-muted-foreground" colSpan={5}>
                             No products found.
                           </td>
                         </tr>
                       ) : (
-                        products.map((product) => (
+                        filteredProducts.map((product) => (
                           <tr key={product.id} className="hover:bg-muted/20 transition">
                             <td className="px-6 py-4 font-medium">{product.name}</td>
                             <td className="px-6 py-4">{product.sku}</td>

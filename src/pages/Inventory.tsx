@@ -25,6 +25,7 @@ import {
   TableRow,
 } from "@/components/ui/table"; // Added
 import { Badge } from "@/components/ui/badge"; // Added
+import Fuse from "fuse.js";
 
 // --- Interface for our fetched inventory data ---
 interface InventoryItem {
@@ -60,6 +61,45 @@ const CurrentStockView = () => {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Sorting state
+  const [sortBy, setSortBy] = useState<"productName"|"sku"|"category"|"quantity">("productName");
+  const [sortDir, setSortDir] = useState<"asc"|"desc">("asc");
+  const [search, setSearch] = useState("");
+
+  // Fuzzy search setup
+  const fuse = new Fuse(inventory, {
+    keys: ["productName", "sku", "category"],
+    threshold: 0.4,
+    ignoreLocation: true,
+  });
+
+  // Filter inventory by fuzzy search
+  let filteredInventory = search.trim()
+    ? fuse.search(search).map(result => result.item)
+    : inventory;
+
+  // Sort filtered inventory before rendering
+  const sortedInventory = [...filteredInventory].sort((a, b) => {
+    let valA = a[sortBy];
+    let valB = b[sortBy];
+    if (typeof valA === "string" && typeof valB === "string") {
+      valA = valA.toLowerCase();
+      valB = valB.toLowerCase();
+    }
+    if (valA < valB) return sortDir === "asc" ? -1 : 1;
+    if (valA > valB) return sortDir === "asc" ? 1 : -1;
+    return 0;
+  });
+
+  // Handle sort change
+  const handleSort = (col: "productName"|"sku"|"category"|"quantity") => {
+    if (sortBy === col) {
+      setSortDir(sortDir === "asc" ? "desc" : "asc");
+    } else {
+      setSortBy(col);
+      setSortDir("asc");
+    }
+  };
 
   useEffect(() => {
     const fetchInventory = async () => {
@@ -108,6 +148,16 @@ const CurrentStockView = () => {
         </CardDescription>
       </CardHeader>
       <CardContent>
+        {/* Search Filter */}
+        <div className="mb-4 max-w-md">
+          <input
+            type="text"
+            className="w-full px-3 py-2 border rounded-md"
+            placeholder="Search by product name, SKU, or category..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
         {loading ? (
           <div className="flex items-center justify-center py-8">
             <span className="animate-pulse text-muted-foreground">
@@ -123,10 +173,30 @@ const CurrentStockView = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Product Name</TableHead>
-                  <TableHead>SKU</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead className="text-right">Quantity</TableHead>
+                  <TableHead
+                    className="cursor-pointer select-none"
+                    onClick={() => handleSort("productName")}
+                  >
+                    Product Name {sortBy === "productName" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+                  </TableHead>
+                  <TableHead
+                    className="cursor-pointer select-none"
+                    onClick={() => handleSort("sku")}
+                  >
+                    SKU {sortBy === "sku" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+                  </TableHead>
+                  <TableHead
+                    className="cursor-pointer select-none"
+                    onClick={() => handleSort("category")}
+                  >
+                    Category {sortBy === "category" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+                  </TableHead>
+                  <TableHead
+                    className="text-right cursor-pointer select-none"
+                    onClick={() => handleSort("quantity")}
+                  >
+                    Quantity {sortBy === "quantity" ? (sortDir === "asc" ? "▲" : "▼") : ""}
+                  </TableHead>
                   <TableHead className="text-center">Status</TableHead>
                 </TableRow>
               </TableHeader>
@@ -141,7 +211,7 @@ const CurrentStockView = () => {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  inventory.map((item) => (
+                  sortedInventory.map((item) => (
                     <TableRow key={item.id}>
                       <TableCell className="font-medium">
                         {item.productName}

@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast"; // Added
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"; // Added
+import Fuse from "fuse.js";
 
 // UPDATED: Interface includes all fields
 interface Supplier {
@@ -42,7 +43,15 @@ interface Supplier {
 }
 
 const SupplierPage = () => {
+  const [search, setSearch] = useState("");
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+
+  // Fuzzy search setup
+  const fuse = new Fuse(suppliers, {
+    keys: ["name", "contact_person", "email", "phone"],
+    threshold: 0.4,
+    ignoreLocation: true,
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [formDialogOpen, setFormDialogOpen] = useState(false);
@@ -204,6 +213,11 @@ const SupplierPage = () => {
     fetchSuppliers();
   };
 
+  // Filter suppliers by fuzzy search
+  const filteredSuppliers = search.trim()
+    ? fuse.search(search).map(result => result.item)
+    : suppliers;
+
   return (
     <div className="relative min-h-screen bg-background py-8 px-4 sm:px-8">
       <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -224,6 +238,15 @@ const SupplierPage = () => {
           <CardDescription>All suppliers in your database</CardDescription>
         </CardHeader>
         <CardContent>
+          {/* Search Filter */}
+          <div className="mb-4 max-w-md">
+            <Input
+              type="text"
+              placeholder="Search suppliers by name, contact, email, or phone..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+          </div>
           {loading ? (
             <div className="flex items-center justify-center py-8">
               <span className="animate-pulse text-muted-foreground">Loading suppliers...</span>
@@ -246,14 +269,14 @@ const SupplierPage = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {suppliers.length === 0 ? (
+                  {filteredSuppliers.length === 0 ? (
                     <TableRow>
                       <TableCell className="px-6 py-4 text-center text-muted-foreground" colSpan={5}>
                         No suppliers found.
                       </TableCell>
                     </TableRow>
                   ) : (
-                    suppliers.map((supplier) => (
+                    filteredSuppliers.map((supplier) => (
                       <TableRow key={supplier.id} className="hover:bg-muted/20 transition">
                         <TableCell className="px-6 py-4 font-medium">{supplier.name}</TableCell>
                         <TableCell className="px-6 py-4">{supplier.contact_person || "N/A"}</TableCell>
