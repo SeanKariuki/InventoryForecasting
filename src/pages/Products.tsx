@@ -55,17 +55,18 @@ interface Product {
   name: string;
   sku: string;
   category: string;
-  category_id: number; // For edit form
-  supplier_id: number; // For edit form
+  category_id: number;
+  supplier_id: number;
   price: number;
+  cost_price: number;
 }
 
-// Interfaces for our dropdowns
 interface Category {
   id: number;
   name: string;
-  description: string; // --- ADDED DESCRIPTION ---
+  description: string;
 }
+
 interface Supplier {
   id: number;
   name: string;
@@ -124,12 +125,13 @@ const Products = () => {
   const { toast } = useToast();
 
   const defaultFormState = {
-    name: "",
-    sku: "",
-    category_id: "",
-    supplier_id: "",
-    price: "",
-    initial_stock: "",
+  name: "",
+  sku: "",
+  category_id: "",
+  supplier_id: "",
+  price: "",
+  cost_price: "",
+  initial_stock: "",
   };
   const [form, setForm] = useState(defaultFormState);
 
@@ -146,6 +148,7 @@ const Products = () => {
         product_name,
         sku,
         unit_price,
+        cost_price,
         category_id, 
         supplier_id,
         categories ( category_name )
@@ -155,13 +158,14 @@ const Products = () => {
       setError(error.message);
     } else {
       const mapped = (data || []).map((item: any) => ({
-        id: item.product_id.toString(),
-        name: item.product_name,
-        sku: item.sku,
-        category: item.categories?.category_name || "N/A",
-        category_id: item.category_id,
-        supplier_id: item.supplier_id,
-        price: item.unit_price || 0,
+  id: item.product_id.toString(),
+  name: item.product_name,
+  sku: item.sku,
+  category: item.categories?.category_name || "N/A",
+  category_id: item.category_id,
+  supplier_id: item.supplier_id,
+  price: item.unit_price || 0,
+  cost_price: item.cost_price ?? 0,
       }));
       setProducts(mapped);
     }
@@ -217,6 +221,7 @@ const Products = () => {
       category_id: product.category_id.toString(),
       supplier_id: product.supplier_id.toString(),
       price: product.price.toString(),
+      cost_price: product.cost_price.toString(),
       initial_stock: "",
     });
     setIsEditMode(true);
@@ -260,6 +265,7 @@ const Products = () => {
           category_id: Number(form.category_id),
           supplier_id: Number(form.supplier_id),
           unit_price: Number(form.price),
+          cost_price: Number(form.cost_price),
         })
         .eq("product_id", Number(editingProduct.id));
 
@@ -282,7 +288,7 @@ const Products = () => {
           category_id: Number(form.category_id),
           supplier_id: Number(form.supplier_id),
           unit_price: Number(form.price),
-          cost_price: 0,
+          cost_price: Number(form.cost_price),
           reorder_level: 10,
           reorder_quantity: 50,
         }])
@@ -430,6 +436,7 @@ const Products = () => {
                         >
                           Price {sortBy === "price" ? (sortDir === "asc" ? "▲" : "▼") : ""}
                         </th>
+                        <th className="px-6 py-3 text-left font-medium text-muted-foreground">Cost Price</th>
                         <th className="px-6 py-3 text-left font-medium text-muted-foreground">Actions</th>
                       </tr>
                     </thead>
@@ -447,6 +454,7 @@ const Products = () => {
                             <td className="px-6 py-4">{product.sku}</td>
                             <td className="px-6 py-4">{product.category}</td>
                             <td className="px-6 py-4">${product.price.toFixed(2)}</td>
+                            <td className="px-6 py-4">${product.cost_price !== undefined && product.cost_price !== null ? product.cost_price.toFixed(2) : '-'}</td>
                             <td className="px-6 py-4 text-center">
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
@@ -526,9 +534,15 @@ const Products = () => {
                   <Input name="price" id="price" type="number" min="0" step="0.01" placeholder="Unit Price" value={form.price} onChange={handleChange} required />
                 </div>
                 <div className="space-y-1">
-                  <Label htmlFor="initial_stock">Initial Stock</Label>
-                  <Input name="initial_stock" id="initial_stock" type="number" min="0" step="1" placeholder="Initial Stock" value={form.initial_stock ?? ""} onChange={handleChange} required />
+                  <Label htmlFor="cost_price">Cost Price</Label>
+                  <Input name="cost_price" id="cost_price" type="number" min="0" step="0.01" placeholder="Cost Price" value={form.cost_price} onChange={handleChange} required />
                 </div>
+                {!isEditMode && (
+                  <div className="space-y-1">
+                    <Label htmlFor="initial_stock">Initial Stock</Label>
+                    <Input name="initial_stock" id="initial_stock" type="number" min="0" step="1" placeholder="Initial Stock" value={form.initial_stock ?? ""} onChange={handleChange} required />
+                  </div>
+                )}
                 {formError && <div className="text-destructive text-sm">{formError}</div>}
                 <DialogFooter>
                   <Button type="submit" disabled={formLoading} className="w-full">

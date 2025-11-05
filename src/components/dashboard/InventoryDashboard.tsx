@@ -1,29 +1,155 @@
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertTriangle, Package, TrendingDown, Warehouse } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
 
 const InventoryDashboard = () => {
-  const stats = [
+  const [recentSales, setRecentSales] = useState<any[]>([]);
+  const [recentSalesLoading, setRecentSalesLoading] = useState(true);
+  const [stats, setStats] = useState({
+    totalItems: 0,
+    lowStock: 0,
+    outOfStock: 0,
+    stockValue: 0,
+  });
+  const [loading, setLoading] = useState(true);
+  const [categoryStock, setCategoryStock] = useState<any[]>([]);
+  const [categoryLoading, setCategoryLoading] = useState(true);
+  const [lowStockItems, setLowStockItems] = useState<any[]>([]);
+  const [lowStockLoading, setLowStockLoading] = useState(true);
+  const [alerts, setAlerts] = useState<any[]>([]);
+  const [alertsLoading, setAlertsLoading] = useState(true);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const fetchRecentSales = async () => {
+      setRecentSalesLoading(true);
+      const { data, error } = await supabase
+        .from("sales")
+        .select(`
+          sale_id,
+          product_id,
+          quantity,
+          total_price,
+          sale_date,
+          products ( product_name )
+        `)
+        .order("sale_date", { ascending: false })
+        .limit(5);
+      if (error || !data) {
+        setRecentSales([]);
+        setRecentSalesLoading(false);
+        return;
+      }
+      setRecentSales(data.map((s: any) => ({
+        ...s,
+        product_name: s.products?.product_name || "Unknown Product",
+      })));
+      setRecentSalesLoading(false);
+    };
+    const fetchStats = async () => {
+      setLoading(true);
+      // Join inventory and products
+      const { data, error } = await supabase
+        .from("inventory")
+        .select(`
+          inventory_id,
+          quantity_on_hand,
+          products (
+            product_id,
+            product_name,
+            cost_price,
+            reorder_level,
+            category_id,
+            categories ( category_name )
+          )
+        `);
+      if (error || !data) {
+        setLoading(false);
+        return;
+      }
+      let totalItems = 0;
+      let lowStock = 0;
+      let outOfStock = 0;
+      let stockValue = 0;
+      const categoryMap: Record<string, number> = {};
+      const lowStockArr: any[] = [];
+      for (const row of data) {
+        if (!row.products) continue;
+        totalItems++;
+        const qty = row.quantity_on_hand ?? 0;
+        const reorder = row.products.reorder_level ?? 0;
+        const cost = row.products.cost_price ?? 0;
+        stockValue += qty * cost;
+        if (qty === 0) outOfStock++;
+        else if (qty < reorder) lowStock++;
+        // Category stock value
+        const category = row.products.categories?.category_name || "Uncategorized";
+        categoryMap[category] = (categoryMap[category] ?? 0) + qty * cost;
+        // Collect low stock items
+        if (qty < reorder) {
+          lowStockArr.push({
+            name: row.products.product_name,
+            quantity: qty,
+            reorder_level: reorder,
+            category: category,
+          });
+        }
+      }
+      setStats({ totalItems, lowStock, outOfStock, stockValue });
+      // Convert categoryMap to array for chart
+      setCategoryStock(Object.entries(categoryMap).map(([name, value]) => ({ name, value })));
+      // Sort and take top 10 low stock items
+      lowStockArr.sort((a, b) => a.quantity - b.quantity);
+      setLowStockItems(lowStockArr.slice(0, 10));
+      setLoading(false);
+      setCategoryLoading(false);
+      setLowStockLoading(false);
+    };
+    const fetchAlerts = async () => {
+      setAlertsLoading(true);
+      const { data, error } = await supabase
+        .from("alerts")
+        .select("alert_id, alert_title, alert_message, severity, created_at")
+        .order("created_at", { ascending: false })
+        .limit(5);
+      if (error || !data) {
+        setAlerts([]);
+        setAlertsLoading(false);
+        return;
+      }
+      setAlerts(data);
+      setAlertsLoading(false);
+    };
+    fetchStats();
+    fetchAlerts();
+  fetchRecentSales();
+  }, []);
+
+  const statCards = [
     {
       title: "Total Items",
-      value: "156",
+      value: loading ? "..." : stats.totalItems,
       description: "Active products",
       icon: Package,
     },
     {
       title: "Low Stock Items",
-      value: "12",
+      value: loading ? "..." : stats.lowStock,
       description: "Need reordering",
       icon: AlertTriangle,
     },
     {
       title: "Stock Value",
-      value: "$45,230",
+      value: loading ? "..." : `$${stats.stockValue.toLocaleString()}`,
       description: "Total inventory value",
       icon: Warehouse,
     },
     {
       title: "Out of Stock",
-      value: "3",
+      value: loading ? "..." : stats.outOfStock,
       description: "Requires immediate action",
       icon: TrendingDown,
     },
@@ -36,8 +162,9 @@ const InventoryDashboard = () => {
         <p className="text-muted-foreground">Monitor and manage your stock levels</p>
       </div>
 
+
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {stats.map((stat) => {
+        {statCards.map((stat) => {
           const Icon = stat.icon;
           return (
             <Card key={stat.title}>
@@ -54,95 +181,115 @@ const InventoryDashboard = () => {
         })}
       </div>
 
-      {/* Inventory Table Section */}
-      <div className="mt-8">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-xl font-semibold">Inventory Items</h3>
-          <button className="bg-primary text-primary-foreground px-4 py-2 rounded hover:bg-primary/90">Add Item</button>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full border rounded-lg">
-            <thead className="bg-muted">
-              <tr>
-                <th className="px-4 py-2 text-left">Name</th>
-                <th className="px-4 py-2 text-left">SKU</th>
-                <th className="px-4 py-2 text-left">Stock</th>
-                <th className="px-4 py-2 text-left">Price</th>
-                <th className="px-4 py-2 text-left">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {/* Placeholder rows */}
-              <tr>
-                <td className="px-4 py-2">Laptop Stand Pro</td>
-                <td className="px-4 py-2">LSP-001</td>
-                <td className="px-4 py-2">0</td>
-                <td className="px-4 py-2">$49.99</td>
-                <td className="px-4 py-2 space-x-2">
-                  <button className="bg-secondary px-2 py-1 rounded hover:bg-secondary/80">Edit</button>
-                  <button className="bg-destructive text-white px-2 py-1 rounded hover:bg-destructive/80">Delete</button>
-                </td>
-              </tr>
-              <tr>
-                <td className="px-4 py-2">Wireless Mouse</td>
-                <td className="px-4 py-2">WM-002</td>
-                <td className="px-4 py-2">5</td>
-                <td className="px-4 py-2">$19.99</td>
-                <td className="px-4 py-2 space-x-2">
-                  <button className="bg-secondary px-2 py-1 rounded hover:bg-secondary/80">Edit</button>
-                  <button className="bg-destructive text-white px-2 py-1 rounded hover:bg-destructive/80">Delete</button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+      {/* Stock Value by Category & Top 10 Low Stock Items Charts */}
+      <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Stock Value by Category */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Stock Value by Category</CardTitle>
+            <CardDescription>Distribution of inventory value by product category</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {categoryLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <span className="animate-pulse text-muted-foreground">Loading chart...</span>
+              </div>
+            ) : categoryStock.length === 0 ? (
+              <div className="text-muted-foreground py-8">No category data found.</div>
+            ) : (
+              <ResponsiveContainer width="100%" height={320} minWidth={320} minHeight={240}>
+                <PieChart>
+                  <Pie
+                    data={categoryStock}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={70}
+                    outerRadius={110}
+                    paddingAngle={2}
+                  >
+                    {categoryStock.map((entry, idx) => (
+                      <Cell
+                        key={`cell-${idx}`}
+                        fill={`hsl(var(--chart-${(idx % 5) + 1}))`}
+                      />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value: number) => `$${value.toLocaleString()}`} />
+                  <Legend verticalAlign="bottom" />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Top 10 Low Stock Items List */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Top 10 Low Stock Items</CardTitle>
+            <CardDescription>Items near or below reorder level</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {lowStockLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <span className="animate-pulse text-muted-foreground">Loading...</span>
+              </div>
+            ) : lowStockItems.length === 0 ? (
+              <div className="text-muted-foreground py-8">No low stock items found.</div>
+            ) : (
+              <ul className="divide-y divide-muted">
+                {lowStockItems.map((item, idx) => (
+                  <li key={item.name} className="flex items-center justify-between py-3 px-2">
+                    <span className="font-medium text-sm truncate max-w-xs">{item.name}</span>
+                    <span className="text-xs font-mono px-2 py-1 rounded bg-muted/40 text-muted-foreground">{item.quantity}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
-      {/* ...existing cards for alerts and forecast summary... */}
+      {/* ...existing cards for alerts, forecast summary, and recent forecasts... */}
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Stock Alerts</CardTitle>
-            <CardDescription>Items requiring attention</CardDescription>
+            <CardTitle>Alerts</CardTitle>
+            <CardDescription>Overview of recent alerts</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              <div className="flex items-center gap-3 rounded-lg border border-destructive/20 bg-destructive/5 p-3">
-                <div className="h-2 w-2 rounded-full bg-destructive" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium">Laptop Stand Pro</p>
-                  <p className="text-xs text-muted-foreground">Out of stock</p>
-                </div>
+            {alertsLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <span className="animate-pulse text-muted-foreground">Loading alerts...</span>
               </div>
-              <div className="flex items-center gap-3 rounded-lg border border-warning/20 bg-warning/5 p-3">
-                <div className="h-2 w-2 rounded-full bg-warning" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium">Wireless Mouse</p>
-                  <p className="text-xs text-muted-foreground">Low stock: 5 units</p>
-                </div>
-              </div>
-            </div>
+            ) : alerts.length === 0 ? (
+              <div className="text-muted-foreground py-8">No recent alerts found.</div>
+            ) : (
+              <ul className="divide-y divide-muted">
+                {alerts.map((alert) => (
+                  <li
+                    key={alert.alert_id}
+                    className="flex flex-col gap-1 py-3 px-2 cursor-pointer hover:bg-muted/30 rounded transition"
+                    onClick={() => navigate("/alerts")}
+                  >
+                    <span className="font-medium text-sm truncate max-w-xs">
+                      {alert.alert_title}
+                    </span>
+                    <span className="text-xs text-muted-foreground truncate max-w-md">
+                      {alert.alert_message}
+                    </span>
+                    <span className={`text-xs font-semibold ${alert.severity === "high" ? "text-destructive" : alert.severity === "medium" ? "text-warning" : "text-muted-foreground"}`}>
+                      {alert.severity?.charAt(0).toUpperCase() + alert.severity?.slice(1) || "Low"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Forecast Summary</CardTitle>
-            <CardDescription>Predicted stock needs</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm">Next 7 days</span>
-                <span className="text-sm font-medium">92% accuracy</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm">Reorder suggestions</span>
-                <span className="text-sm font-medium text-primary">8 products</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+
       </div>
     </div>
   );

@@ -1,3 +1,19 @@
+          <Route
+            path="/account"
+            element={
+              <ProtectedRoute>
+                <div className="min-h-screen bg-background">
+                  <Navbar />
+                  <div className="flex">
+                    <Sidebar />
+                    <main className="flex-1 p-6">
+                      <AccountPage />
+                    </main>
+                  </div>
+                </div>
+              </ProtectedRoute>
+            }
+          />
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -7,6 +23,24 @@ import Index from "./pages/Index";
 import AlertsPage from "./pages/Alerts";
 import Auth from "./pages/Auth";
 import Products from "./pages/Products";
+import UsersPage from "./pages/Users";
+import AccountPage from "./pages/Account";
+          <Route
+            path="/account"
+            element={
+              <ProtectedRoute>
+                <div className="min-h-screen bg-background">
+                  <Navbar />
+                  <div className="flex">
+                    <Sidebar />
+                    <main className="flex-1 p-6">
+                      <AccountPage />
+                    </main>
+                  </div>
+                </div>
+              </ProtectedRoute>
+            }
+          />
 import Inventory from "./pages/Inventory";
 import NotFound from "./pages/NotFound";
 import ReportsPage from "./pages/Reports";
@@ -60,6 +94,22 @@ const App = () => (
                     <Sidebar />
                     <main className="flex-1 p-6">
                       <Products />
+                    </main>
+                  </div>
+                </div>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/users"
+            element={
+              <ProtectedRoute>
+                <div className="min-h-screen bg-background">
+                  <Navbar />
+                  <div className="flex">
+                    <Sidebar />
+                    <main className="flex-1 p-6">
+                      <UsersPage />
                     </main>
                   </div>
                 </div>
@@ -133,6 +183,22 @@ const App = () => (
                     <Sidebar />
                     <main className="flex-1 p-6">
                       <ReportsPage />
+                    </main>
+                  </div>
+                </div>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/account"
+            element={
+              <ProtectedRoute>
+                <div className="min-h-screen bg-background">
+                  <Navbar />
+                  <div className="flex">
+                    <Sidebar />
+                    <main className="flex-1 p-6">
+                      <AccountPage />
                     </main>
                   </div>
                 </div>
