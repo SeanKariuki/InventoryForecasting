@@ -25,7 +25,7 @@ const Sidebar = () => {
     { name: "Alerts", href: "/alerts", icon: Bell, roles: ["admin", "inventory_manager", "sales_staff"] },
     { name: "Reports", href: "/reports", icon: FileText, roles: ["admin", "inventory_manager"] },
   { name: "Users", href: "/users", icon: Users, roles: ["admin"] },
-  { name: "Suppliers", href: "/supplier", icon: Package, roles: ["admin", "inventory_manager", "sales_staff"] },
+  { name: "Suppliers", href: "/supplier", icon: Package, roles: ["admin", "inventory_manager"] },
   ];
 
   const filteredNavigation = navigation.filter((item) =>

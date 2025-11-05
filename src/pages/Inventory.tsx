@@ -58,6 +58,9 @@ const getStockStatus = (quantity: number, reorderLevel: number) => {
 // --- Component 1: Current Stock ---
 // This is now the real, data-driven component
 const CurrentStockView = () => {
+  const [editRowId, setEditRowId] = useState<number | null>(null);
+  const [editQuantity, setEditQuantity] = useState<number | null>(null);
+  const [saving, setSaving] = useState(false);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -175,7 +178,7 @@ const CurrentStockView = () => {
       <CardHeader>
         <CardTitle>Current Stock Levels</CardTitle>
         <CardDescription>
-          A live view of all products in your inventory.
+          A live view of all products in your inventory. You can edit quantity levels directly below.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -204,56 +207,87 @@ const CurrentStockView = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead
-                    className="cursor-pointer select-none"
-                    onClick={() => handleSort("productName")}
-                  >
-                    Product Name {sortBy === "productName" ? (sortDir === "asc" ? "▲" : "▼") : ""}
-                  </TableHead>
-                  <TableHead
-                    className="cursor-pointer select-none"
-                    onClick={() => handleSort("sku")}
-                  >
-                    SKU {sortBy === "sku" ? (sortDir === "asc" ? "▲" : "▼") : ""}
-                  </TableHead>
-                  <TableHead
-                    className="cursor-pointer select-none"
-                    onClick={() => handleSort("category")}
-                  >
-                    Category {sortBy === "category" ? (sortDir === "asc" ? "▲" : "▼") : ""}
-                  </TableHead>
-                  <TableHead
-                    className="text-right cursor-pointer select-none"
-                    onClick={() => handleSort("quantity")}
-                  >
-                    Quantity {sortBy === "quantity" ? (sortDir === "asc" ? "▲" : "▼") : ""}
-                  </TableHead>
+                  <TableHead className="cursor-pointer select-none" onClick={() => handleSort("productName")}>Product Name {sortBy === "productName" ? (sortDir === "asc" ? "▲" : "▼") : ""}</TableHead>
+                  <TableHead className="cursor-pointer select-none" onClick={() => handleSort("sku")}>SKU {sortBy === "sku" ? (sortDir === "asc" ? "▲" : "▼") : ""}</TableHead>
+                  <TableHead className="cursor-pointer select-none" onClick={() => handleSort("category")}>Category {sortBy === "category" ? (sortDir === "asc" ? "▲" : "▼") : ""}</TableHead>
+                  <TableHead className="text-right cursor-pointer select-none" onClick={() => handleSort("quantity")}>Quantity {sortBy === "quantity" ? (sortDir === "asc" ? "▲" : "▼") : ""}</TableHead>
                   <TableHead className="text-center">Status</TableHead>
+                  <TableHead className="text-center">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {inventory.length === 0 ? (
                   <TableRow>
-                    <TableCell
-                      className="px-6 py-4 text-center text-muted-foreground"
-                      colSpan={5}
-                    >
-                      No inventory records found.
-                    </TableCell>
+                    <TableCell className="px-6 py-4 text-center text-muted-foreground" colSpan={6}>No inventory records found.</TableCell>
                   </TableRow>
                 ) : (
                   sortedInventory.map((item) => (
                     <TableRow key={item.id}>
-                      <TableCell className="font-medium">
-                        {item.productName}
-                      </TableCell>
+                      <TableCell className="font-medium">{item.productName}</TableCell>
                       <TableCell>{item.sku}</TableCell>
                       <TableCell>{item.category}</TableCell>
                       <TableCell className="text-right font-bold">
-                        {item.quantity}
+                        {editRowId === item.id ? (
+                          <input
+                            type="number"
+                            className="w-20 px-2 py-1 border rounded-md text-right"
+                            value={editQuantity ?? item.quantity}
+                            min={0}
+                            onChange={e => setEditQuantity(Number(e.target.value))}
+                            disabled={saving}
+                          />
+                        ) : (
+                          item.quantity
+                        )}
                       </TableCell>
+                      <TableCell className="text-center">{getStockStatus(item.quantity, item.reorderLevel)}</TableCell>
                       <TableCell className="text-center">
-                        {getStockStatus(item.quantity, item.reorderLevel)}
+                        {editRowId === item.id ? (
+                          <Button
+                            size="sm"
+                            disabled={saving}
+                            onClick={async () => {
+                              setSaving(true);
+                              await supabase
+                                .from("inventory")
+                                .update({ quantity_on_hand: editQuantity })
+                                .eq("inventory_id", item.id);
+                              setEditRowId(null);
+                              setEditQuantity(null);
+                              setSaving(false);
+                              // Refresh inventory
+                              const { data } = await supabase
+                                .from("inventory")
+                                .select(`
+                                  inventory_id,
+                                  quantity_on_hand,
+                                  products (
+                                    product_id,
+                                    product_name,
+                                    sku,
+                                    reorder_level,
+                                    categories ( category_name )
+                                  )
+                                `);
+                              if (data) {
+                                const mapped = (data || []).map((item: any) => ({
+                                  id: item.inventory_id,
+                                  quantity: item.quantity_on_hand,
+                                  productName: item.products.product_name,
+                                  sku: item.products.sku,
+                                  reorderLevel: item.products.reorder_level,
+                                  category: item.products.categories?.category_name || "N/A",
+                                  productId: item.products.product_id,
+                                }));
+                                setInventory(mapped);
+                              }
+                            }}
+                          >
+                            Save
+                          </Button>
+                        ) : (
+                          <Button size="sm" variant="outline" onClick={() => { setEditRowId(item.id); setEditQuantity(item.quantity); }}>Edit</Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))
@@ -268,35 +302,109 @@ const CurrentStockView = () => {
 };
 
 // --- Placeholder Component 2: Stock Adjustments ---
-const StockAdjustments = () => {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Stock Adjustments</CardTitle>
-        <CardDescription>
-          Manually adjust stock for damages, returns, or new arrivals.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <p>Stock Adjustment Form will go here...</p>
-        <Button>Submit Adjustment</Button>
-      </CardContent>
-    </Card>
-  );
-};
 
 // --- Placeholder Component 3: Transaction History ---
+import { format } from "date-fns";
+
+interface Transaction {
+  transaction_id: number;
+  product_id: number;
+  product_name: string;
+  transaction_type: string;
+  quantity: number;
+  transaction_date: string;
+  notes: string | null;
+}
+
 const TransactionHistory = () => {
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchTransactions = async () => {
+      setLoading(true);
+      setError(null);
+      const { data, error } = await supabase
+        .from("inventory_transactions")
+        .select(`
+          transaction_id,
+          product_id,
+          transaction_type,
+          quantity,
+          transaction_date,
+          notes,
+          products ( product_name )
+        `)
+        .order("transaction_date", { ascending: false });
+      if (error) {
+        setError(error.message);
+      } else {
+        const mapped = (data || []).map((item: any) => ({
+          transaction_id: item.transaction_id,
+          product_id: item.product_id,
+          product_name: item.products?.product_name || "Unknown",
+          transaction_type: item.transaction_type,
+          quantity: item.quantity,
+          transaction_date: item.transaction_date,
+          notes: item.notes,
+        }));
+        setTransactions(mapped);
+      }
+      setLoading(false);
+    };
+    fetchTransactions();
+  }, []);
+
   return (
     <Card>
       <CardHeader>
         <CardTitle>Transaction History</CardTitle>
         <CardDescription>
-          A log of all stock movements from sales, adjustments, and returns.
+          A log of all stock movements: sales, adjustments, receipts, and returns.
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <p>Transaction History Data Table will go here...</p>
+        {loading ? (
+          <div className="flex items-center justify-center py-8">
+            <span className="animate-pulse text-muted-foreground">Loading history...</span>
+          </div>
+        ) : error ? (
+          <div className="flex items-center justify-center py-8">
+            <span className="text-destructive">Error: {error}</span>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Product</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead className="text-right">Quantity</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Notes</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {transactions.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center text-muted-foreground">No transactions found.</TableCell>
+                  </TableRow>
+                ) : (
+                  transactions.map(tx => (
+                    <TableRow key={tx.transaction_id}>
+                      <TableCell>{tx.product_name}</TableCell>
+                      <TableCell>{tx.transaction_type}</TableCell>
+                      <TableCell className="text-right font-bold">{tx.quantity}</TableCell>
+                      <TableCell>{format(new Date(tx.transaction_date), "yyyy-MM-dd HH:mm")}</TableCell>
+                      <TableCell>{tx.notes || "-"}</TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -319,18 +427,13 @@ const Inventory = () => (
         </div>
 
         <Tabs defaultValue="current-stock" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 md:w-[400px]">
+          <TabsList className="grid w-full grid-cols-2 md:w-[300px]">
             <TabsTrigger value="current-stock">Current Stock</TabsTrigger>
-            <TabsTrigger value="adjustments">Adjustments</TabsTrigger>
             <TabsTrigger value="history">History</TabsTrigger>
           </TabsList>
 
           <TabsContent value="current-stock" className="mt-4">
             <CurrentStockView />
-          </TabsContent>
-
-          <TabsContent value="adjustments" className="mt-4">
-            <StockAdjustments />
           </TabsContent>
 
           <TabsContent value="history" className="mt-4">

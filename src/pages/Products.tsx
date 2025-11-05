@@ -47,6 +47,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import Fuse from "fuse.js";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"; // Import Table components
+import { useAuth } from "@/hooks/useAuth";
 
 // UPDATED: Interface no longer needs stock
 interface Product {
@@ -71,6 +72,7 @@ interface Supplier {
 }
 
 const Products = () => {
+  const { profile } = useAuth();
   // Sorting state
   const [sortBy, setSortBy] = useState<"name"|"sku"|"category"|"price">("name");
   const [sortDir, setSortDir] = useState<"asc"|"desc">("asc");
@@ -127,6 +129,7 @@ const Products = () => {
     category_id: "",
     supplier_id: "",
     price: "",
+    initial_stock: "",
   };
   const [form, setForm] = useState(defaultFormState);
 
@@ -214,6 +217,7 @@ const Products = () => {
       category_id: product.category_id.toString(),
       supplier_id: product.supplier_id.toString(),
       price: product.price.toString(),
+      initial_stock: "",
     });
     setIsEditMode(true);
     setEditingProduct(product);
@@ -292,8 +296,8 @@ const Products = () => {
       }
 
       const { error: inventoryError } = await supabase.from("inventory").insert([{
-        product_id: newProduct.product_id,
-        quantity_on_hand: 0, // Default to 0
+  product_id: newProduct.product_id,
+  quantity_on_hand: Number(form.initial_stock ?? 0),
       }]);
 
       if (inventoryError) {
@@ -344,6 +348,9 @@ const Products = () => {
     await fetchProducts();
   };
 
+  // Disable edit/delete/add for sales_staff
+  const isReadOnly = profile?.role === "sales_staff";
+
   return (
     <div className="relative min-h-screen bg-background py-8 px-4 sm:px-8">
       <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -351,13 +358,15 @@ const Products = () => {
           <h2 className="text-3xl font-bold tracking-tight mb-1">Products</h2>
           <p className="text-muted-foreground">Manage your product catalog</p>
         </div>
-        <Button
-          className="w-full sm:w-auto shadow-lg rounded-full px-6 py-2 text-base font-semibold flex items-center gap-2"
-          onClick={handleAddOpen}
-        >
-          <Plus className="h-5 w-5" />
-          Add Product
-        </Button>
+        {profile && !isReadOnly && (
+          <Button
+            className="w-full sm:w-auto shadow-lg rounded-full px-6 py-2 text-base font-semibold flex items-center gap-2"
+            onClick={handleAddOpen}
+          >
+            <Plus className="h-5 w-5" />
+            Add Product
+          </Button>
+        )}
       </div>
 
       <Tabs defaultValue="products" className="w-full">
@@ -446,15 +455,19 @@ const Products = () => {
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
-                                  <DropdownMenuItem onClick={() => handleEditOpen(product)}>
-                                    Edit
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={() => handleDeleteOpen(product)}
-                                    className="text-destructive"
-                                  >
-                                    Delete
-                                  </DropdownMenuItem>
+                                  {!isReadOnly && (
+                                    <>
+                                      <DropdownMenuItem onClick={() => handleEditOpen(product)}>
+                                        Edit
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem
+                                        onClick={() => handleDeleteOpen(product)}
+                                        className="text-destructive"
+                                      >
+                                        Delete
+                                      </DropdownMenuItem>
+                                    </>
+                                  )}
                                 </DropdownMenuContent>
                               </DropdownMenu>
                             </td>
@@ -508,7 +521,14 @@ const Products = () => {
                     </SelectContent>
                   </Select>
                 </div>
-                <Input name="price" type="number" min="0" step="0.01" placeholder="Unit Price" value={form.price} onChange={handleChange} required />
+                <div className="space-y-1">
+                  <Label htmlFor="price">Unit Price</Label>
+                  <Input name="price" id="price" type="number" min="0" step="0.01" placeholder="Unit Price" value={form.price} onChange={handleChange} required />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="initial_stock">Initial Stock</Label>
+                  <Input name="initial_stock" id="initial_stock" type="number" min="0" step="1" placeholder="Initial Stock" value={form.initial_stock ?? ""} onChange={handleChange} required />
+                </div>
                 {formError && <div className="text-destructive text-sm">{formError}</div>}
                 <DialogFooter>
                   <Button type="submit" disabled={formLoading} className="w-full">
@@ -546,6 +566,7 @@ const Products = () => {
           <CategoryCrud
             categories={categories}
             fetchDropdownData={fetchDropdownData}
+            isReadOnly={isReadOnly}
           />
         </TabsContent>
       </Tabs>
@@ -558,13 +579,13 @@ const Products = () => {
 // THIS IS THE UPDATED CATEGORY COMPONENT
 //
 // ---
-
 type CategoryCrudProps = {
   categories: Category[];
-  fetchDropdownData: () => Promise<void>; 
+  fetchDropdownData: () => Promise<void>;
+  isReadOnly: boolean;
 };
 
-const CategoryCrud = ({ categories, fetchDropdownData }: CategoryCrudProps) => {
+const CategoryCrud = ({ categories, fetchDropdownData, isReadOnly }: CategoryCrudProps) => {
   // --- UPDATED: Form state includes description ---
   const [form, setForm] = useState({ name: "", description: "" });
   const [editId, setEditId] = useState<number | null>(null);
@@ -678,10 +699,12 @@ const CategoryCrud = ({ categories, fetchDropdownData }: CategoryCrudProps) => {
             <CardTitle>Manage Categories</CardTitle>
             <CardDescription>Add, edit, or delete product categories.</CardDescription>
           </div>
-          <Button onClick={handleOpenAdd}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Category
-          </Button>
+          {!isReadOnly && (
+            <Button onClick={handleOpenAdd}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Category
+            </Button>
+          )}
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
@@ -711,8 +734,12 @@ const CategoryCrud = ({ categories, fetchDropdownData }: CategoryCrudProps) => {
                         {cat.description || "N/A"}
                       </TableCell>
                       <TableCell className="px-4 py-2 space-x-2 text-right">
-                        <Button size="sm" variant="secondary" onClick={() => handleOpenEdit(cat)}>Edit</Button>
-                        <Button size="sm" variant="destructive" onClick={() => handleOpenDelete(cat)}>Delete</Button>
+                        {!isReadOnly && (
+                          <>
+                            <Button size="sm" variant="secondary" onClick={() => handleOpenEdit(cat)}>Edit</Button>
+                            <Button size="sm" variant="destructive" onClick={() => handleOpenDelete(cat)}>Delete</Button>
+                          </>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))
@@ -724,69 +751,73 @@ const CategoryCrud = ({ categories, fetchDropdownData }: CategoryCrudProps) => {
       </Card>
 
       {/* --- UPDATED: Dialog for Add/Edit Category --- */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-md mx-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {editId ? "Edit Category" : "Add New Category"}
-            </DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-1">
-              <Label htmlFor="categoryName">Category Name</Label>
-              <Input
-                id="categoryName"
-                name="name" // --- ADDED name prop ---
-                placeholder="e.g., Electronics"
-                value={form.name}
-                onChange={handleChange}
-                disabled={loading}
-                required
-              />
-            </div>
-            {/* --- ADDED Description Textarea --- */}
-            <div className="space-y-1">
-              <Label htmlFor="categoryDescription">Description</Label>
-              <Textarea
-                id="categoryDescription"
-                name="description" // --- ADDED name prop ---
-                placeholder="A short description of the category..."
-                value={form.description}
-                onChange={handleChange}
-                disabled={loading}
-              />
-            </div>
-            <DialogFooter>
-              <Button type="submit" disabled={loading} className="w-full">
-                {loading ? (editId ? "Updating..." : "Adding...") : (editId ? "Update Category" : "Add Category")}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      { !isReadOnly && (
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DialogContent className="max-w-md mx-auto">
+            <DialogHeader>
+              <DialogTitle>
+                {editId ? "Edit Category" : "Add New Category"}
+              </DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-1">
+                <Label htmlFor="categoryName">Category Name</Label>
+                <Input
+                  id="categoryName"
+                  name="name" // --- ADDED name prop ---
+                  placeholder="e.g., Electronics"
+                  value={form.name}
+                  onChange={handleChange}
+                  disabled={loading}
+                  required
+                />
+              </div>
+              {/* --- ADDED Description Textarea --- */}
+              <div className="space-y-1">
+                <Label htmlFor="categoryDescription">Description</Label>
+                <Textarea
+                  id="categoryDescription"
+                  name="description" // --- ADDED name prop ---
+                  placeholder="A short description of the category..."
+                  value={form.description}
+                  onChange={handleChange}
+                  disabled={loading}
+                />
+              </div>
+              <DialogFooter>
+                <Button type="submit" disabled={loading} className="w-full">
+                  {loading ? (editId ? "Updating..." : "Adding...") : (editId ? "Update Category" : "Add Category")}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* --- Alert Dialog for Deleting Category --- */}
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete the category "{categoryToDelete?.name}". 
-              This will fail if any products are still using this category.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteConfirm}
-              disabled={loading}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {loading ? "Deleting..." : "Delete"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      { !isReadOnly && (
+        <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently delete the category "{categoryToDelete?.name}". 
+                This will fail if any products are still using this category.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeleteConfirm}
+                disabled={loading}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {loading ? "Deleting..." : "Delete"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </>
   );
 };

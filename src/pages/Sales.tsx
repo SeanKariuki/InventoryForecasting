@@ -47,6 +47,7 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { X, Plus } from "lucide-react";
+import Fuse from "fuse.js";
 
 // ---
 // Type for decrease_inventory RPC arguments
@@ -96,6 +97,7 @@ interface CartItem {
 // MAIN SALES PAGE COMPONENT
 // ---
 const SalesPage = () => {
+  const [salesSearch, setSalesSearch] = useState("");
   const [sales, setSales] = useState<Sale[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -120,20 +122,21 @@ const SalesPage = () => {
     setError(null);
     const { data, error } = await supabase
       .from("sales")
-      .select(
-        `
-        sales_id, 
-        invoice_number, 
-        total_amount, 
+      .select(`
+        sales_id,
+        invoice_number,
+        total_amount,
         sale_date,
+        discount_amount,
+        discount_type,
+        discount_value,
         sales_items (
           quantity,
           unit_price,
           total_price,
           products ( product_name, sku )
         )
-      `
-      );
+      `);
 
     if (error) {
       setError(error.message);
@@ -158,6 +161,9 @@ const SalesPage = () => {
           sale_date: s.sale_date,
           items_summary: summary,
           items: items,
+          discount_amount: s.discount_amount ?? 0,
+          discount_type: s.discount_type ?? null,
+          discount_value: s.discount_value ?? null,
         };
       });
       setSales(mapped);
@@ -267,6 +273,18 @@ const SalesPage = () => {
     fetchSales();
   };
 
+  // Sort sales from newest to oldest
+  const sortedSales = [...sales].sort((a, b) => new Date(b.sale_date).getTime() - new Date(a.sale_date).getTime());
+  // Fuzzy search for sales
+  const fuse = new Fuse(sortedSales, {
+    keys: ["invoice_number", "items_summary", "sale_date"],
+    threshold: 0.4,
+    ignoreLocation: true,
+  });
+  const filteredSales = salesSearch.trim()
+    ? fuse.search(salesSearch).map(result => result.item)
+    : sortedSales;
+
   return (
     <div className="relative min-h-screen bg-background py-8 px-4 sm:px-8">
       <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -286,6 +304,17 @@ const SalesPage = () => {
         <CardHeader className="bg-muted/40 rounded-t-xl">
           <CardTitle className="text-lg font-semibold">Sales List</CardTitle>
           <CardDescription>All sales in your database</CardDescription>
+          <div className="mt-4 flex justify-start">
+            <div className="w-full max-w-xs">
+              <Input
+                type="text"
+                className="px-3 py-2 border rounded-md shadow-sm focus:ring-2 focus:ring-primary"
+                placeholder="Search sales by invoice, product, or date..."
+                value={salesSearch}
+                onChange={e => setSalesSearch(e.target.value)}
+              />
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -321,7 +350,7 @@ const SalesPage = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {sales.length === 0 ? (
+                  {filteredSales.length === 0 ? (
                     <TableRow>
                       <TableCell
                         className="px-6 py-4 text-center text-muted-foreground"
@@ -331,7 +360,7 @@ const SalesPage = () => {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    sales.map((sale) => (
+                    filteredSales.map((sale) => (
                       <TableRow
                         key={sale.id}
                         className="hover:bg-muted/20 transition"
@@ -512,11 +541,15 @@ const SalesPage = () => {
             </ScrollArea>
           </div>
           <DialogFooter className="sm:justify-between items-center">
-            <div className="text-sm text-muted-foreground">
-              Sale Date:{" "}
-              {viewingSale
-                ? new Date(viewingSale.sale_date).toLocaleDateString()
-                : "N/A"}
+            <div className="flex flex-col gap-1">
+              <div className="text-sm text-muted-foreground">
+                Sale Date: {viewingSale ? new Date(viewingSale.sale_date).toLocaleDateString() : "N/A"}
+              </div>
+              {viewingSale && (viewingSale as any).discount_amount > 0 && (
+                <div className="text-sm text-blue-700 font-semibold">
+                  Discount Applied: -${(viewingSale as any).discount_amount.toFixed(2)}
+                </div>
+              )}
             </div>
             <div className="text-lg font-bold">
               Grand Total: ${viewingSale?.total_amount.toFixed(2)}
@@ -556,6 +589,8 @@ const QuickSaleDialog = ({
   const [cart, setCart] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [discountType, setDiscountType] = useState<'percent'|'fixed'>('percent');
+  const [discountValue, setDiscountValue] = useState<number>(0);
   const { toast } = useToast();
 
   // Fetch products for the search bar
@@ -702,6 +737,11 @@ const QuickSaleDialog = ({
     return cart.reduce((total, item) => total + item.total_price, 0);
   };
   const totalAmount = calculateTotal();
+  // Calculate discount
+  const discountAmount = discountType === 'percent'
+    ? (totalAmount * (discountValue / 100))
+    : discountValue;
+  const finalAmount = Math.max(totalAmount - discountAmount, 0);
 
   const handleSubmitSale = async () => {
     if (cart.length === 0) {
@@ -714,24 +754,20 @@ const QuickSaleDialog = ({
     }
 
     setLoading(true);
-
-    // ---
-    // THIS IS THE CRITICAL PART
-    // We will use the 'decrease_inventory' function, but we'll
-    // CATCH the error if it fails (e.g., out of stock)
-    // ---
     try {
       // Step 1: Create the main 'sales' record
       const { data: newSale, error: saleError } = await supabase
         .from("sales")
         .insert({
           invoice_number: "PENDING", // Satisfy TypeScript
-          total_amount: totalAmount,
+          total_amount: finalAmount,
           sale_date: new Date().toISOString(),
           tax_amount: 0,
-          discount_amount: 0,
+          discount_amount: discountAmount,
           sale_status: "completed",
           payment_method: "cash",
+          discount_type: discountType,
+          discount_value: discountValue,
         })
         .select()
         .single();
@@ -921,10 +957,33 @@ const QuickSaleDialog = ({
                 </TableBody>
               </Table>
             </ScrollArea>
-            <div className="flex justify-end items-center mt-4">
-              <span className="text-xl font-bold">
-                Grand Total: ${totalAmount.toFixed(2)}
-              </span>
+            {/* Discount Section */}
+            <div className="flex flex-col gap-2 mt-4">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold">Discount:</span>
+                <select
+                  value={discountType}
+                  onChange={e => setDiscountType(e.target.value as 'percent'|'fixed')}
+                  className="border rounded px-2 py-1"
+                >
+                  <option value="percent">Percent (%)</option>
+                  <option value="fixed">Fixed ($)</option>
+                </select>
+                <Input
+                  type="number"
+                  min="0"
+                  max={discountType === 'percent' ? 100 : totalAmount}
+                  value={discountValue}
+                  onChange={e => setDiscountValue(Number(e.target.value))}
+                  className="w-24"
+                  placeholder={discountType === 'percent' ? 'e.g. 10' : 'e.g. 5'}
+                />
+              </div>
+              <div className="flex justify-end items-center gap-4">
+                <span className="text-base">Subtotal: ${totalAmount.toFixed(2)}</span>
+                <span className="text-base">Discount: -${discountAmount.toFixed(2)}</span>
+                <span className="text-xl font-bold">Final Total: ${finalAmount.toFixed(2)}</span>
+              </div>
             </div>
           </div>
         </div>

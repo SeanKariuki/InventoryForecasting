@@ -127,10 +127,8 @@ const generateFakeForecast = async (
     forecast_date: new Date().toISOString().split("T")[0],
     forecast_period: forecastPeriodString,
     predicted_quantity: totalPredictedSales,
-    confidence_lower: Math.max(0, Math.round(totalPredictedSales * 0.85)),
-    confidence_upper: Math.round(totalPredictedSales * 1.15),
     predicted_revenue: totalPredictedSales * productData.unit_price,
-    model_version: "v1.0-fake-summary",
+    // model_version, confidence_lower, confidence_upper omitted for DB defaults/triggers
   };
 
   const { error: forecastError } = await supabase
@@ -217,10 +215,8 @@ const generateFakeBatchForecast = async (forecastDays: number) => {
       forecast_date: new Date().toISOString().split("T")[0],
       forecast_period: forecastPeriodString,
       predicted_quantity: totalPredictedSales,
-      confidence_lower: Math.max(0, Math.round(totalPredictedSales * 0.85)),
-      confidence_upper: Math.round(totalPredictedSales * 1.15),
       predicted_revenue: totalPredictedSales * product.unit_price,
-      model_version: "v1.0-fake-batch-summary",
+      // model_version, confidence_lower, confidence_upper omitted for DB defaults/triggers
     });
 
     if (currentStock < totalPredictedSales) {
@@ -611,32 +607,38 @@ const ForecastingPage = () => {
                           </TableCell>
                         </TableRow>
                       ) : (
-                        forecasts.map((f) => (
-                          <TableRow key={f.forecast_id}>
-                            <TableCell className="font-medium">
-                              {f.product_name}
-                            </TableCell>
-                            <TableCell>
-                              {new Date(f.forecast_date).toLocaleDateString()}
-                            </TableCell>
-                            <TableCell>{f.forecast_period}</TableCell>
-                            <TableCell className="text-right">
-                              {f.predicted_quantity}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              ${f.predicted_revenue?.toFixed(2) ?? "0.00"}
-                            </TableCell>
-                            <TableCell className="text-center">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleViewDetails(f)}
-                              >
-                                View Details
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))
+                        [...forecasts]
+                          .sort((a, b) => {
+                            const aDate = a.generated_at ? new Date(a.generated_at).getTime() : 0;
+                            const bDate = b.generated_at ? new Date(b.generated_at).getTime() : 0;
+                            return bDate - aDate;
+                          })
+                          .map((f) => (
+                            <TableRow key={f.forecast_id}>
+                              <TableCell className="font-medium">
+                                {f.product_name}
+                              </TableCell>
+                              <TableCell>
+                                {new Date(f.forecast_date).toLocaleDateString()}
+                              </TableCell>
+                              <TableCell>{f.forecast_period}</TableCell>
+                              <TableCell className="text-right">
+                                {f.predicted_quantity}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                ${f.predicted_revenue?.toFixed(2) ?? "0.00"}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleViewDetails(f)}
+                                >
+                                  View Details
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))
                       )}
                     </TableBody>
                   </Table>
