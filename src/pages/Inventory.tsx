@@ -113,6 +113,7 @@ const CurrentStockView = () => {
           inventory_id,
           quantity_on_hand,
           products (
+            product_id,
             product_name,
             sku,
             reorder_level,
@@ -130,8 +131,38 @@ const CurrentStockView = () => {
           sku: item.products.sku,
           reorderLevel: item.products.reorder_level,
           category: item.products.categories?.category_name || "N/A",
+          productId: item.products.product_id,
         }));
         setInventory(mapped);
+
+        // --- ALERT CREATION LOGIC ---
+        for (const item of mapped) {
+          // Out of Stock
+          if (item.quantity === 0) {
+            await supabase.from("alerts").insert({
+              alert_type: "stock",
+              alert_title: `Out of Stock: ${item.productName}`,
+              alert_message: `${item.productName} (SKU: ${item.sku}) is out of stock!`,
+              severity: "critical",
+              product_id: item.productId,
+              is_read: false,
+              is_resolved: false,
+              created_at: new Date().toISOString(),
+            });
+          } else if (item.quantity < item.reorderLevel) {
+            await supabase.from("alerts").insert({
+              alert_type: "stock",
+              alert_title: `Low Stock: ${item.productName}`,
+              alert_message: `${item.productName} (SKU: ${item.sku}) is below reorder level (${item.quantity} < ${item.reorderLevel})`,
+              severity: "high",
+              product_id: item.productId,
+              is_read: false,
+              is_resolved: false,
+              created_at: new Date().toISOString(),
+            });
+          }
+        }
+        // --- END ALERT CREATION ---
       }
       setLoading(false);
     };

@@ -9,8 +9,10 @@ import Auth from "./pages/Auth";
 import Products from "./pages/Products";
 import Inventory from "./pages/Inventory";
 import NotFound from "./pages/NotFound";
+import ReportsPage from "./pages/Reports";
 import SupplierPage from "./pages/Supplier";
 import SalesPage from "./pages/Sales";
+import Forecasting from "./pages/Forecasting";
 import Navbar from "@/components/layout/Navbar";
 import Sidebar from "@/components/layout/Sidebar";
 
@@ -29,6 +31,22 @@ const App = () => (
             element={
               <ProtectedRoute>
                 <Index />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/forecasting"
+            element={
+              <ProtectedRoute>
+                <div className="min-h-screen bg-background">
+                  <Navbar />
+                  <div className="flex">
+                    <Sidebar />
+                    <main className="flex-1 p-6">
+                      <Forecasting />
+                    </main>
+                  </div>
+                </div>
               </ProtectedRoute>
             }
           />
@@ -105,6 +123,22 @@ const App = () => (
             }
           />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+          <Route
+            path="/reports"
+            element={
+              <ProtectedRoute>
+                <div className="min-h-screen bg-background">
+                  <Navbar />
+                  <div className="flex">
+                    <Sidebar />
+                    <main className="flex-1 p-6">
+                      <ReportsPage />
+                    </main>
+                  </div>
+                </div>
+              </ProtectedRoute>
+            }
+          />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

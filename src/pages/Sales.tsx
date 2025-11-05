@@ -49,6 +49,13 @@ import {
 import { X, Plus } from "lucide-react";
 
 // ---
+// Type for decrease_inventory RPC arguments
+type DecreaseInventoryArgs = {
+  prod_id: number;
+  sold_quantity: number;
+  ref_id: number;
+  ref_type: string;
+};
 // SHARED INTERFACES
 // ---
 interface SaleItem {
@@ -553,18 +560,20 @@ const QuickSaleDialog = ({
 
   // Fetch products for the search bar
   const fetchProducts = async () => {
+    // Use left join to ensure all products are fetched, even if no inventory row exists
     const { data, error } = await supabase
       .from("products")
-      .select(
-        `
+      .select(`
         product_id,
         product_name,
         sku,
         unit_price,
-        inventory ( quantity_on_hand )
-      `
-      )
-      .limit(100); // Limit to 100 products for performance
+        inventory:inventory(product_id, quantity_on_hand)
+      `)
+      .limit(100);
+
+    // Debug log: see what is returned from Supabase
+    console.log("Supabase products data:", data);
 
     if (data) {
       const mapped: ProductSearch[] = data.map((p: any) => ({
@@ -572,8 +581,12 @@ const QuickSaleDialog = ({
         name: p.product_name,
         sku: p.sku,
         price: p.unit_price,
-        stock: p.inventory?.quantity_on_hand || 0,
+        // If inventory row is missing, treat stock as 0
+        stock: Array.isArray(p.inventory) && p.inventory.length > 0
+          ? p.inventory[0].quantity_on_hand || 0
+          : 0,
       }));
+      console.log("Mapped products:", mapped);
       setProducts(mapped);
     }
   };
@@ -581,17 +594,36 @@ const QuickSaleDialog = ({
   useEffect(() => {
     if (open) {
       fetchProducts();
-      setCart([]); // Clear cart when dialog opens
+      setCart([]);
     }
   }, [open]);
 
   const handleProductSelect = (product: ProductSearch) => {
+    // Check for stock
+    if (product.stock <= 0) {
+      toast({
+        title: "Out of Stock",
+        description: `${product.name} is currently out of stock.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    
     setCart((currentCart) => {
       const existingItem = currentCart.find(
         (item) => item.product_id === product.id
       );
 
       if (existingItem) {
+        // Check stock before incrementing
+        if (existingItem.quantity + 1 > product.stock) {
+           toast({
+            title: "Stock Limit Reached",
+            description: `Only ${product.stock} units of ${product.name} available.`,
+            variant: "destructive",
+          });
+          return currentCart;
+        }
         // Increment quantity
         return currentCart.map((item) =>
           item.product_id === product.id
@@ -617,13 +649,35 @@ const QuickSaleDialog = ({
         ];
       }
     });
-    setSearchQuery(""); // Clear search
+    setSearchQuery("");
   };
 
   const handleQuantityChange = (productId: number, newQuantity: number) => {
     if (newQuantity < 1) {
-      // Remove item if quantity is less than 1
       setCart(cart.filter((item) => item.product_id !== productId));
+      return;
+    }
+
+    // Check stock on quantity change
+    const product = products.find(p => p.id === productId);
+    if (product && newQuantity > product.stock) {
+      toast({
+        title: "Stock Limit Reached",
+        description: `Only ${product.stock} units of ${product.name} available.`,
+        variant: "destructive",
+      });
+      // Set to max available stock instead of blocking
+      setCart(
+        cart.map((item) =>
+          item.product_id === productId
+            ? {
+                ...item,
+                quantity: product.stock,
+                total_price: product.stock * item.unit_price,
+              }
+            : item
+        )
+      );
       return;
     }
 
@@ -661,122 +715,88 @@ const QuickSaleDialog = ({
 
     setLoading(true);
 
-    // Step 1: Create the main 'sales' record
-    const { data: newSale, error: saleError } = await supabase
-      .from("sales")
-      .insert({
-        invoice_number: "PENDING", // Satisfy TypeScript
-        total_amount: totalAmount,
-        sale_date: new Date().toISOString(),
-        tax_amount: 0,
-        discount_amount: 0,
-        sale_status: "completed",
-        payment_method: "cash", // Default payment method
-      })
-      .select()
-      .single();
-
-    if (saleError || !newSale) {
-      setLoading(false);
-      toast({
-        title: "Error creating sale",
-        description: saleError?.message || "An unknown error occurred.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // Step 2: Prepare the 'sales_items' records
-    const saleItemsData = cart.map((item) => ({
-      sales_id: newSale.sales_id,
-      product_id: item.product_id,
-      quantity: item.quantity,
-      unit_price: item.unit_price,
-    }));
-
-    // Step 3: Insert all 'sales_items'
-    const { error: itemsError } = await supabase
-      .from("sales_items")
-      .insert(saleItemsData);
-
-    if (itemsError) {
-      setLoading(false);
-      toast({
-        title: "CRITICAL ERROR",
-        description: `Sale ${newSale.invoice_number} was created, but items failed to add: ${itemsError.message}`,
-        variant: "destructive",
-        duration: 10000,
-      });
-      return;
-    }
-
-    // Step 4: Update inventory and create transaction logs
+    // ---
+    // THIS IS THE CRITICAL PART
+    // We will use the 'decrease_inventory' function, but we'll
+    // CATCH the error if it fails (e.g., out of stock)
+    // ---
     try {
+      // Step 1: Create the main 'sales' record
+      const { data: newSale, error: saleError } = await supabase
+        .from("sales")
+        .insert({
+          invoice_number: "PENDING", // Satisfy TypeScript
+          total_amount: totalAmount,
+          sale_date: new Date().toISOString(),
+          tax_amount: 0,
+          discount_amount: 0,
+          sale_status: "completed",
+          payment_method: "cash",
+        })
+        .select()
+        .single();
+
+      if (saleError || !newSale) {
+        throw new Error(saleError?.message || "An unknown error occurred creating the sale.");
+      }
+
+      // Step 2: Prepare the 'sales_items' records
+      const saleItemsData = cart.map((item) => ({
+        sales_id: newSale.sales_id,
+        product_id: item.product_id,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+      }));
+
+      // Step 3: Insert all 'sales_items'
+      const { error: itemsError } = await supabase
+        .from("sales_items")
+        .insert(saleItemsData);
+
+      if (itemsError) {
+        // This is a critical error, we should try to roll back the sale
+        // For now, we'll just show a scary toast
+        throw new Error(`Sale ${newSale.invoice_number} was created, but items failed to add: ${itemsError.message}`);
+      }
+
+      // Step 4: Update inventory USING THE RPC FUNCTION
+      // This will either succeed or throw an error if stock is too low
       for (const item of cart) {
-        // 1. Get current stock
-        const { data: inventoryData, error: inventoryError } = await supabase
-          .from("inventory")
-          .select("quantity_on_hand")
-          .eq("product_id", item.product_id)
-          .single();
-
-        if (inventoryError) {
-          throw new Error(
-            `Could not fetch inventory for ${item.name}: ${inventoryError.message}`
-          );
-        }
-
-        const currentStock = inventoryData?.quantity_on_hand || 0;
-        const newStock = currentStock - item.quantity;
-
-        // 2. Update stock
-        const { error: updateError } = await supabase
-          .from("inventory")
-          .update({ quantity_on_hand: newStock })
-          .eq("product_id", item.product_id);
-
-        if (updateError) {
-          throw new Error(
-            `Could not update inventory for ${item.name}: ${updateError.message}`
-          );
-        }
-
-        // 3. Log the transaction
-        const { error: logError } = await supabase
-          .from("inventory_transactions")
-          .insert({
-            product_id: item.product_id,
-            transaction_type: "sale",
-            quantity: -item.quantity,
-            reference_id: newSale.sales_id,
-            reference_type: "sale",
-            // performed_by will be null (or you can set it if you pass in the user ID)
-          });
-
-        if (logError) {
-          throw new Error(
-            `Could not log transaction for ${item.name}: ${logError.message}`
-          );
+        const { error: rpcError } = await (supabase.rpc as any)(
+          "decrease_inventory",
+          {
+            prod_id: item.product_id,
+            sold_quantity: item.quantity,
+            ref_id: newSale.sales_id,
+            ref_type: "sale",
+          }
+        );
+        
+        if (rpcError) {
+          // This is where the "Not enough stock" error will be caught
+          throw new Error(`Failed to update stock for ${item.name}: ${rpcError.message}`);
         }
       }
-    } catch (error: any) {
+
+      // If all steps succeeded:
       setLoading(false);
       toast({
-        title: "CRITICAL ERROR",
-        description: `Sale created, but failed to update inventory: ${error.message}`,
-        variant: "destructive",
-        duration: 10000,
+        title: "Sale Created!",
+        description: `Invoice ${newSale.invoice_number} successfully created.`,
       });
-      return;
-    }
+      onSaleCreated(); // Refresh the sales list
+      onOpenChange(false); // Close the dialog
 
-    setLoading(false);
-    toast({
-      title: "Sale Created!",
-      description: `Invoice ${newSale.invoice_number} successfully created.`,
-    });
-    onSaleCreated(); // Refresh the sales list on the parent page
-    onOpenChange(false); // Close the dialog
+    } catch (error: any) {
+      // This single block will catch ANY error from the steps above
+      setLoading(false);
+      toast({
+        title: "Sale Failed",
+        description: error.message,
+        variant: "destructive",
+        duration: 7000,
+      });
+    }
   };
 
   // Filter products for the search command
@@ -815,7 +835,12 @@ const QuickSaleDialog = ({
                       <CommandItem
                         key={product.id}
                         onSelect={() => handleProductSelect(product)}
-                        className="cursor-pointer"
+                        className={
+                          `cursor-pointer transition-colors duration-150 ` +
+                          `hover:bg-[#E3E8FF] ` +
+                          (product.stock <= 0 ? 'opacity-50 pointer-events-none' : '')
+                        }
+                        disabled={product.stock <= 0}
                       >
                         <div className="flex flex-col">
                           <span className="font-medium">{product.name}</span>

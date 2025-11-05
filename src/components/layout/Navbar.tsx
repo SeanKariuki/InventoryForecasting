@@ -21,7 +21,7 @@ const Navbar = () => {
           <div className="flex">
             <Link to="/" className="flex items-center">
               <Package className="mr-2 h-6 w-6 text-primary" />
-              <span className="text-xl font-bold text-foreground">InvSpark</span>
+              <span className="text-xl font-bold text-foreground">SmartStock</span>
             </Link>
           </div>
 
