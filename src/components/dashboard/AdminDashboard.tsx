@@ -164,6 +164,9 @@ const AdminDashboard = () => {
               <button className="w-full rounded-lg border border-border p-3 text-left text-sm hover:bg-muted" onClick={() => navigate('/forecasting')}>
                 Generate Forecast
               </button>
+              <button className="w-full rounded-lg border border-border p-3 text-left text-sm hover:bg-muted" onClick={() => navigate('/users')}>
+                View Users
+              </button>
             </div>
           </CardContent>
         </Card>

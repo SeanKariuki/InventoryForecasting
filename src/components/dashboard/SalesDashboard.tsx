@@ -1,25 +1,25 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { DollarSign, ShoppingCart, Package, Plus } from "lucide-react";
-import { Link } from "react-router-dom";
+import { DollarSign, ShoppingCart, Package } from "lucide-react";
+import { useSalesDashboardData } from "./_SalesDashboardData";
 
 const SalesDashboard = () => {
+  const { totalValue, itemsSold, availableProducts, transactions, recentSales, loading, error } = useSalesDashboardData();
   const stats = [
     {
-      title: "Today's Sales",
-      value: "$1,240",
-      description: "8 transactions",
+      title: "Total Value of Products",
+      value: loading ? "..." : `$${totalValue.toLocaleString()}`,
+      description: "Stock value",
       icon: DollarSign,
     },
     {
       title: "Items Sold",
-      value: "24",
+      value: loading ? "..." : itemsSold.toLocaleString(),
       description: "Today",
       icon: ShoppingCart,
     },
     {
       title: "Available Products",
-      value: "156",
+      value: loading ? "..." : availableProducts.toLocaleString(),
       description: "In stock",
       icon: Package,
     },
@@ -32,12 +32,6 @@ const SalesDashboard = () => {
           <h2 className="text-3xl font-bold tracking-tight">Sales Dashboard</h2>
           <p className="text-muted-foreground">Record and track your sales</p>
         </div>
-        <Link to="/sales/new">
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
-            New Sale
-          </Button>
-        </Link>
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
@@ -61,24 +55,25 @@ const SalesDashboard = () => {
       <Card>
         <CardHeader>
           <CardTitle>Recent Sales</CardTitle>
-          <CardDescription>Latest transactions from today</CardDescription>
+          <CardDescription>Top 5 latest transactions</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            <div className="flex items-center justify-between rounded-lg border border-border p-4">
-              <div>
-                <p className="text-sm font-medium">INV-20250118-0023</p>
-                <p className="text-xs text-muted-foreground">2 items • 10:45 AM</p>
-              </div>
-              <span className="text-sm font-medium">$245.00</span>
-            </div>
-            <div className="flex items-center justify-between rounded-lg border border-border p-4">
-              <div>
-                <p className="text-sm font-medium">INV-20250118-0022</p>
-                <p className="text-xs text-muted-foreground">1 item • 10:30 AM</p>
-              </div>
-              <span className="text-sm font-medium">$89.99</span>
-            </div>
+            {loading ? (
+              <div className="text-muted-foreground py-4">Loading recent sales...</div>
+            ) : recentSales.length === 0 ? (
+              <div className="text-muted-foreground py-4">No recent sales found.</div>
+            ) : (
+              recentSales.map((sale, idx) => (
+                <div key={idx} className="flex items-center justify-between rounded-lg border border-border p-4">
+                  <div>
+                    <p className="text-sm font-medium">{sale.invoice_number}</p>
+                    <p className="text-xs text-muted-foreground">{sale.items_count} items • {new Date(sale.sale_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                  </div>
+                  <span className="text-sm font-medium">${sale.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                </div>
+              ))
+            )}
           </div>
         </CardContent>
       </Card>

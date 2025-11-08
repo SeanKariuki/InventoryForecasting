@@ -56,156 +56,35 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Toaster />
-  {/* Remove Sonner if not imported or needed */}
       <BrowserRouter>
         <Routes>
           <Route path="/auth" element={<Auth />} />
           <Route
-            path="/"
+            path="*"
             element={
-              <ProtectedRoute>
-                <Index />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/forecasting"
-            element={
-              <ProtectedRoute>
-                <div className="min-h-screen bg-background">
-                  <Navbar />
-                  <div className="flex">
-                    <Sidebar />
-                    <main className="flex-1 p-6">
-                      <Forecasting />
-                    </main>
-                  </div>
+              <div className="min-h-screen bg-background">
+                <Navbar />
+                <div className="flex">
+                  <Sidebar />
+                  <main className="flex-1 p-6">
+                    <Routes>
+                      <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
+                      <Route path="/forecasting" element={<ProtectedRoute><Forecasting /></ProtectedRoute>} />
+                      <Route path="/products" element={<ProtectedRoute><Products /></ProtectedRoute>} />
+                      <Route path="/users" element={<ProtectedRoute><UsersPage /></ProtectedRoute>} />
+                      <Route path="/inventory" element={<ProtectedRoute><Inventory /></ProtectedRoute>} />
+                      <Route path="/supplier" element={<ProtectedRoute><SupplierPage /></ProtectedRoute>} />
+                      <Route path="/sales" element={<ProtectedRoute><SalesPage /></ProtectedRoute>} />
+                      <Route path="/alerts" element={<ProtectedRoute><AlertsPage /></ProtectedRoute>} />
+                      <Route path="/reports" element={<ProtectedRoute><ReportsPage /></ProtectedRoute>} />
+                      <Route path="/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />
+                      <Route path="*" element={<NotFound />} />
+                    </Routes>
+                  </main>
                 </div>
-              </ProtectedRoute>
+              </div>
             }
           />
-          <Route
-            path="/products"
-            element={
-              <ProtectedRoute>
-                <div className="min-h-screen bg-background">
-                  <Navbar />
-                  <div className="flex">
-                    <Sidebar />
-                    <main className="flex-1 p-6">
-                      <Products />
-                    </main>
-                  </div>
-                </div>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/users"
-            element={
-              <ProtectedRoute>
-                <div className="min-h-screen bg-background">
-                  <Navbar />
-                  <div className="flex">
-                    <Sidebar />
-                    <main className="flex-1 p-6">
-                      <UsersPage />
-                    </main>
-                  </div>
-                </div>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/inventory"
-            element={
-              <ProtectedRoute>
-                <Inventory />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/supplier"
-            element={
-              <ProtectedRoute>
-                <div className="min-h-screen bg-background">
-                  <Navbar />
-                  <div className="flex">
-                    <Sidebar />
-                    <main className="flex-1 p-6">
-                      <SupplierPage />
-                    </main>
-                  </div>
-                </div>
-              </ProtectedRoute>
-            }
-          />
-            <Route
-              path="/sales"
-              element={
-                <ProtectedRoute>
-                  <div className="min-h-screen bg-background">
-                    <Navbar />
-                    <div className="flex">
-                      <Sidebar />
-                      <main className="flex-1 p-6">
-                        <SalesPage />
-                      </main>
-                    </div>
-                  </div>
-                </ProtectedRoute>
-              }
-            />
-          <Route
-            path="/alerts"
-            element={
-              <ProtectedRoute>
-                <div className="min-h-screen bg-background">
-                  <Navbar />
-                  <div className="flex">
-                    <Sidebar />
-                    <main className="flex-1 p-6">
-                      <AlertsPage />
-                    </main>
-                  </div>
-                </div>
-              </ProtectedRoute>
-            }
-          />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route
-            path="/reports"
-            element={
-              <ProtectedRoute>
-                <div className="min-h-screen bg-background">
-                  <Navbar />
-                  <div className="flex">
-                    <Sidebar />
-                    <main className="flex-1 p-6">
-                      <ReportsPage />
-                    </main>
-                  </div>
-                </div>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/account"
-            element={
-              <ProtectedRoute>
-                <div className="min-h-screen bg-background">
-                  <Navbar />
-                  <div className="flex">
-                    <Sidebar />
-                    <main className="flex-1 p-6">
-                      <AccountPage />
-                    </main>
-                  </div>
-                </div>
-              </ProtectedRoute>
-            }
-          />
-          <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
     </TooltipProvider>

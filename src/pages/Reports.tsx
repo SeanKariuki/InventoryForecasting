@@ -92,6 +92,9 @@ const ReportsPage = () => {
   const [reports, setReports] = useState<ReportRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState<Product[]>([]);
+  // Multi-select for future demand chart
+  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
+  // Single select for predicted vs actual sales chart
   const [selectedProductId, setSelectedProductId] = useState<string>("");
   const [actualSales, setActualSales] = useState<ActualSales[]>([]);
   const [predictedSales, setPredictedSales] = useState<PredictedSales[]>([]);
@@ -114,6 +117,11 @@ const ReportsPage = () => {
     fetchProducts();
   }, []);
 
+  // Helper: handle multi-select change
+  const handleProductFilterChange = (ids: string[]) => {
+    setSelectedProductIds(ids);
+  };
+
   // Fetch future demand forecast data
   useEffect(() => {
     const fetchFutureDemand = async () => {
@@ -134,12 +142,12 @@ const ReportsPage = () => {
         return;
       }
       // Group by product_id, sum predicted_quantity
-      const grouped: Record<string, { product_name: string; total_predicted: number }> = {};
+      const grouped: Record<string, { product_id: string; product_name: string; total_predicted: number }> = {};
       for (const row of data) {
-        const pid = row.product_id;
+        const pid = row.product_id.toString();
         const pname = row.products?.product_name || "Unknown";
         if (!grouped[pid]) {
-          grouped[pid] = { product_name: pname, total_predicted: 0 };
+          grouped[pid] = { product_id: pid, product_name: pname, total_predicted: 0 };
         }
         grouped[pid].total_predicted += row.predicted_quantity || 0;
       }
@@ -290,7 +298,28 @@ const ReportsPage = () => {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {/* Forecast period selection removed, fixed to 30 days */}
+          {/* Product multi-select filter */}
+          <div className="mb-4 max-w-2xl">
+            <label className="block mb-2 font-semibold text-lg">Filter products:</label>
+            <div className="flex flex-wrap gap-2">
+              {products.map((p) => (
+                <label key={p.id} className="flex items-center gap-2 px-2 py-1 rounded border cursor-pointer text-sm bg-white hover:bg-gray-50">
+                  <input
+                    type="checkbox"
+                    checked={selectedProductIds.includes(p.id.toString())}
+                    onChange={e => {
+                      if (e.target.checked) {
+                        setSelectedProductIds([...selectedProductIds, p.id.toString()]);
+                      } else {
+                        setSelectedProductIds(selectedProductIds.filter(id => id !== p.id.toString()));
+                      }
+                    }}
+                  />
+                  {p.name}
+                </label>
+              ))}
+            </div>
+          </div>
           {futureDemandLoading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -301,7 +330,7 @@ const ReportsPage = () => {
               <>
                 <ResponsiveContainer width="100%" height={600} minWidth={320} minHeight={480}>
                   <BarChart
-                    data={futureDemandData}
+                    data={futureDemandData.filter(item => selectedProductIds.length === 0 || selectedProductIds.includes(item.product_id))}
                     margin={{ top: 128, right: 120, left: 120, bottom: 160 }}
                     barCategoryGap={80}
                   >
@@ -310,7 +339,12 @@ const ReportsPage = () => {
                       interval={0}
                       height={80}
                       tick={props => {
-                        const { x, y, payload } = props;
+                        const { x, y, payload, index } = props;
+                        // Only show every Nth label if too many products
+                        const N = futureDemandData.length > 20 ? 2 : 1;
+                        if (index % N !== 0) return null;
+                        // Abbreviate if too long
+                        const label = payload.value.length > 18 ? payload.value.slice(0, 15) + "..." : payload.value;
                         return (
                           <text
                             x={x}
@@ -321,7 +355,7 @@ const ReportsPage = () => {
                             fontWeight={500}
                             transform={`rotate(-45,${x},${y + 10})`}
                           >
-                            {payload.value}
+                            {label}
                           </text>
                         );
                       }}
@@ -436,48 +470,7 @@ const ReportsPage = () => {
         </CardContent>
       </Card>
 
-      {/* Reports Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Generated Reports</CardTitle>
-          <CardDescription>All available reports in the system.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              <span className="animate-pulse text-muted-foreground">Loading reports...</span>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Summary</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {reports.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={3} className="text-center py-4 text-muted-foreground">
-                      No reports found.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  reports.map((r) => (
-                    <TableRow key={r.id}>
-                      <TableCell>{r.report_type}</TableCell>
-                      <TableCell>{new Date(r.generated_at).toLocaleString()}</TableCell>
-                      <TableCell>{r.summary}</TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      
     </div>
   );
 };

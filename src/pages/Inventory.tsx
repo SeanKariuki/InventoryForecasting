@@ -412,36 +412,30 @@ const TransactionHistory = () => {
 
 // --- Main Inventory Page ---
 const Inventory = () => (
-  <div className="min-h-screen bg-background">
-    <Navbar />
-    <div className="flex">
-      <Sidebar />
-      <main className="flex-1 p-6">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold tracking-tight">
-            Inventory Management
-          </h1>
-          <p className="text-muted-foreground">
-            Track stock levels, make adjustments, and view history.
-          </p>
-        </div>
-
-        <Tabs defaultValue="current-stock" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 md:w-[300px]">
-            <TabsTrigger value="current-stock">Current Stock</TabsTrigger>
-            <TabsTrigger value="history">History</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="current-stock" className="mt-4">
-            <CurrentStockView />
-          </TabsContent>
-
-          <TabsContent value="history" className="mt-4">
-            <TransactionHistory />
-          </TabsContent>
-        </Tabs>
-      </main>
+  <div>
+    <div className="mb-6">
+      <h1 className="text-3xl font-bold tracking-tight">
+        Inventory Management
+      </h1>
+      <p className="text-muted-foreground">
+        Track stock levels, make adjustments, and view history.
+      </p>
     </div>
+
+    <Tabs defaultValue="current-stock" className="w-full">
+      <TabsList className="grid w-full grid-cols-2 md:w-[300px]">
+        <TabsTrigger value="current-stock">Current Stock</TabsTrigger>
+        <TabsTrigger value="history">History</TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="current-stock" className="mt-4">
+        <CurrentStockView />
+      </TabsContent>
+
+      <TabsContent value="history" className="mt-4">
+        <TransactionHistory />
+      </TabsContent>
+    </Tabs>
   </div>
 );
 

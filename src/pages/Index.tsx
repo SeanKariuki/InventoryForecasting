@@ -6,7 +6,7 @@ import InventoryDashboard from "@/components/dashboard/InventoryDashboard";
 import SalesDashboard from "@/components/dashboard/SalesDashboard";
 
 const Index = () => {
-  const { profile } = useAuth();
+  const { profile, loading } = useAuth();
 
   const renderDashboard = () => {
     switch (profile?.role) {
@@ -21,15 +21,19 @@ const Index = () => {
     }
   };
 
-  return (
-    <div className="min-h-screen bg-background">
-      <Navbar />
-      <div className="flex">
-        <Sidebar />
-        <main className="flex-1 p-6">{renderDashboard()}</main>
+  // Only show loading overlay if profile is null and loading is true (initial app load)
+  if (loading && !profile) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+        <div className="flex flex-col items-center gap-4">
+          <span className="animate-spin h-8 w-8 rounded-full border-4 border-primary border-t-transparent" />
+          <span className="text-muted-foreground text-lg animate-pulse">Loading dashboard...</span>
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
+
+  return renderDashboard();
 };
 
 export default Index;
