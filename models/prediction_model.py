@@ -48,7 +48,8 @@ class ForecastingManager:
             'sales_lag_1', 'sales_lag_7', 'sales_lag_30', 'sales_rolling_mean_30'
         ]
         
-        self.latest_date = self.historical_df['Date'].max()
+        # Always use today as the forecast anchor, regardless of historical data
+        self.latest_date = pd.Timestamp.today().normalize()
         max_lookback = 30 
         self.lookback_df = self.historical_df[
             self.historical_df['Date'] >= (self.latest_date - pd.Timedelta(days=max_lookback))
