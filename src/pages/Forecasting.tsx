@@ -79,189 +79,68 @@ interface ForecastResult {
   generated_at: string | null;
 }
 
-// ---
-// This function is unchanged
-// ---
-const generateFakeForecast = async (
-  productId: number,
-  forecastDays: number
+// Interface for the daily granular output from the FastAPI model
+interface DailyPrediction {
+    date: string;
+    product_id: string; // Product IDs are strings in the model
+    predicted_quantity: number;
+    predicted_revenue: number;
+    confidence_lower: number | null;
+    confidence_upper: number | null;
+}
+
+
+// ============================================================
+// CORRECTED: Call FastAPI (backend handles ALL database saves)
+// ============================================================
+const API_BASE_URL = "http://127.0.0.1:8000/forecast";
+
+const callForecastAPI = async (
+    horizonDays: number, 
+    productId: string | null, 
+    isBatch: boolean
 ) => {
-  // 1. Simulate a "long" computation
-  await new Promise((resolve) => setTimeout(resolve, 2000));
+    const payload = {
+        horizon_days: horizonDays,
+        product_id: productId,
+        is_batch: isBatch,
+    };
 
-  // 2. Get the product's details and current stock
-  const { data: productData, error: productError } = await supabase
-    .from("products")
-    .select("product_name, unit_price, reorder_quantity")
-    .eq("product_id", productId)
-    .single();
-
-  const { data: inventoryData, error: inventoryError } = await supabase
-    .from("inventory")
-    .select("quantity_on_hand")
-    .eq("product_id", productId)
-    .single();
-
-  if (productError || inventoryError) {
-    throw new Error(productError?.message || inventoryError?.message);
-  }
-
-  const productName = productData.product_name;
-  const currentStock = inventoryData.quantity_on_hand || 0;
-  const avgDailySales = (productData.reorder_quantity || 30) / 30;
-
-  let totalPredictedSales = 0;
-  for (let i = 1; i <= forecastDays; i++) {
-    const randomVariance = (Math.random() - 0.5) * (avgDailySales / 2);
-    const predicted_quantity = Math.max(
-      0,
-      Math.round(avgDailySales + randomVariance)
-    );
-    totalPredictedSales += predicted_quantity;
-  }
-
-  const forecastPeriodString = `${forecastDays} Days`;
-
-  const newForecastRow = {
-    product_id: productId,
-    forecast_date: new Date().toISOString().split("T")[0],
-    forecast_period: forecastPeriodString,
-    predicted_quantity: totalPredictedSales,
-    predicted_revenue: totalPredictedSales * productData.unit_price,
-    // model_version, confidence_lower, confidence_upper omitted for DB defaults/triggers
-  };
-
-  const { error: forecastError } = await supabase
-    .from("forecasts")
-    .upsert(newForecastRow, {
-      onConflict: "product_id, forecast_date, forecast_period",
+    const response = await fetch(API_BASE_URL, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
     });
 
-  if (forecastError) {
-    if (forecastError.message.includes("forecasts_forecast_period_check")) {
-      throw new Error(
-        `Database Constraint Error. Run this SQL: ALTER TABLE public.forecasts DROP CONSTRAINT forecasts_forecast_period_check;`
-      );
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: 'Unknown API error' }));
+        throw new Error(`API Error ${response.status}: ${errorData.detail || 'Failed to generate forecast.'}`);
     }
-    throw new Error(`Failed to save forecasts: ${forecastError.message}`);
-  }
 
-  if (currentStock < totalPredictedSales) {
-    const daysToStockout = Math.floor(
-      currentStock / (totalPredictedSales / forecastDays)
-    );
+    // FastAPI returns { message, forecast_data: List<DailyPrediction>, model_version }
+    const result = await response.json();
+    
+    // ============================================================
+    // REMOVED: Frontend no longer inserts to database!
+    // The backend save_forecasts_to_database() already handles this.
+    // It saves only the FINAL day per product to avoid duplicates.
+    // ============================================================
+    
+    // Just return summary info
+    const uniqueProductsForecasted = new Set(
+        result.forecast_data.map((d: DailyPrediction) => d.product_id)
+    ).size;
 
-    await supabase.from("alerts").insert({
-      alert_type: "stockout_predicted",
-      product_id: productId,
-      alert_title: `Predicted Stockout for ${productName}`,
-      alert_message: `Based on a ${forecastDays}-day forecast, stock is predicted to run out in ~${daysToStockout} days.`,
-      severity: "high",
-      current_value: daysToStockout,
-      threshold_value: 0,
-    });
-  }
-
-  return {
-    success: true,
-    rowsAdded: 1,
-    alertsCreated: currentStock < totalPredictedSales ? 1 : 0,
-  };
+    return {
+        success: true,
+        productsForecasted: uniqueProductsForecasted,
+        dailyPredictions: result.forecast_data.length,
+        model_version: result.model_version,
+    };
 };
 
-// ---
-// This function is unchanged
-// ---
-const generateFakeBatchForecast = async (forecastDays: number) => {
-  await new Promise((resolve) => setTimeout(resolve, 4000));
-
-  const { data: allProducts, error: allProductsError } = await supabase
-    .from("products")
-    .select(
-      `
-      product_id,
-      product_name,
-      unit_price,
-      reorder_quantity,
-      inventory ( quantity_on_hand )
-    `
-    );
-
-  if (allProductsError) {
-    throw new Error(allProductsError.message);
-  }
-
-  const allForecastRows = [];
-  const allAlerts = [];
-  const forecastPeriodString = `${forecastDays} Days`;
-
-  for (const product of allProducts) {
-    const productName = product.product_name;
-    const currentStock = (product.inventory as any)?.quantity_on_hand || 0;
-    const avgDailySales = (product.reorder_quantity || 30) / 30;
-    let totalPredictedSales = 0;
-
-    for (let i = 1; i <= forecastDays; i++) {
-      const randomVariance = (Math.random() - 0.5) * (avgDailySales / 2);
-      const predicted_quantity = Math.max(
-        0,
-        Math.round(avgDailySales + randomVariance)
-      );
-      totalPredictedSales += predicted_quantity;
-    }
-
-    allForecastRows.push({
-      product_id: product.product_id,
-      forecast_date: new Date().toISOString().split("T")[0],
-      forecast_period: forecastPeriodString,
-      predicted_quantity: totalPredictedSales,
-      predicted_revenue: totalPredictedSales * product.unit_price,
-      // model_version, confidence_lower, confidence_upper omitted for DB defaults/triggers
-    });
-
-    if (currentStock < totalPredictedSales) {
-      const daysToStockout = Math.floor(
-        currentStock / (totalPredictedSales / forecastDays)
-      );
-      allAlerts.push({
-        alert_type: "stockout_predicted",
-        product_id: product.product_id,
-        alert_title: `Predicted Stockout for ${productName}`,
-        alert_message: `Based on a ${forecastDays}-day forecast, stock is predicted to run out in ~${daysToStockout} days.`,
-        severity: "high",
-        current_value: daysToStockout,
-        threshold_value: 0,
-      });
-    }
-  }
-
-  const { error: forecastError } = await supabase
-    .from("forecasts")
-    .upsert(allForecastRows, {
-      onConflict: "product_id, forecast_date, forecast_period",
-    });
-
-  if (forecastError) {
-    if (forecastError.message.includes("forecasts_forecast_period_check")) {
-      throw new Error(
-        `Database Constraint Error. Run this SQL: ALTER TABLE public.forecasts DROP CONSTRAINT forecasts_forecast_period_check;`
-      );
-    }
-    throw new Error(`Failed to save forecasts: ${forecastError.message}`);
-  }
-
-  if (allAlerts.length > 0) {
-    await supabase.from("alerts").upsert(allAlerts, {
-      onConflict: "product_id, alert_type, is_resolved",
-    });
-  }
-
-  return {
-    success: true,
-    productsForecasted: allProducts.length,
-    alertsCreated: allAlerts.length,
-  };
-};
 
 // ---
 // The main page component
@@ -288,22 +167,24 @@ const ForecastingPage = () => {
   const toggleTheme = () => {
     setTheme((prev) => (prev === "dark" ? "light" : "dark"));
   };
+  
   const [forecasts, setForecasts] = useState<ForecastResult[]>([]);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [viewingForecast, setViewingForecast] = useState<ForecastResult | null>(null);
-  // ...existing code...
-  // ...existing code...
-
-  // ...existing state declarations...
 
   // Chart state for selected product
   const [chartProductId, setChartProductId] = useState<string>("");
+  
   // Chart data for selected product
   const selectedProductForecasts = chartProductId
     ? forecasts.filter(f => f.product_id === Number(chartProductId))
     : [];
+  
   // Sort by forecast_date ascending
-  const sortedForecasts = [...selectedProductForecasts].sort((a, b) => new Date(a.forecast_date).getTime() - new Date(b.forecast_date).getTime());
+  const sortedForecasts = [...selectedProductForecasts].sort((a, b) => 
+    new Date(a.forecast_date).getTime() - new Date(b.forecast_date).getTime()
+  );
+  
   const chartLabels = sortedForecasts.map(f => f.forecast_date);
   const actualSales = sortedForecasts.map(f => f.actual_quantity ?? null);
   const predictedSales = sortedForecasts.map(f => f.predicted_quantity);
@@ -356,19 +237,16 @@ const ForecastingPage = () => {
       },
     },
   };
+
   const [products, setProducts] = useState<Product[]>([]);
-  const [selectedProductId, setSelectedProductId] = useState<string | null>(
-    null
-  );
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<string>("30");
   const [activeTab, setActiveTab] = useState<"single" | "batch">("single");
   const [loading, setLoading] = useState(false); // For generator
   const [loadingForecasts, setLoadingForecasts] = useState(true); // For table
   const { toast } = useToast();
 
-  // ...existing code...
-
-  // --- NEW: Function to fetch forecast results for the table ---
+  // Function to fetch forecast results for the table
   const fetchForecasts = async () => {
     setLoadingForecasts(true);
     const { data, error } = await supabase
@@ -407,8 +285,15 @@ const ForecastingPage = () => {
     fetchForecasts();
   }, []);
 
+  // ============================================================
+  // CORRECTED: handleRunForecast - backend saves to database
+  // ============================================================
   const handleRunForecast = async () => {
-    if (activeTab === "single" && !selectedProductId) {
+    const horizonDays = Number(selectedPeriod);
+    const isBatch = activeTab === "batch";
+    const productId = isBatch ? null : selectedProductId;
+
+    if (!isBatch && !productId) {
       toast({ title: "No product selected", variant: "destructive" });
       return;
     }
@@ -416,23 +301,19 @@ const ForecastingPage = () => {
     setLoading(true);
 
     try {
-      if (activeTab === "single") {
-        const result = await generateFakeForecast(
-          Number(selectedProductId),
-          Number(selectedPeriod)
-        );
-        toast({
-          title: "Forecast Generated!",
-          description: `Successfully saved ${result.rowsAdded} new forecast record.`,
-        });
-      } else {
-        const result = await generateFakeBatchForecast(Number(selectedPeriod));
-        toast({
-          title: "Batch Forecast Complete!",
-          description: `Forecasted ${result.productsForecasted} products and created ${result.alertsCreated} new alerts.`,
-        });
-      }
-      // --- REFRESH THE TABLE ---
+      // Call the API - backend handles database save
+      const result = await callForecastAPI(
+        horizonDays,
+        productId,
+        isBatch
+      );
+
+      toast({
+        title: "Forecast Complete!",
+        description: `Generated ${result.dailyPredictions} daily predictions for ${result.productsForecasted} product(s). Final forecasts saved to database.`,
+      });
+
+      // Refresh the table to show new forecasts
       await fetchForecasts();
     } catch (error: any) {
       toast({
@@ -442,6 +323,7 @@ const ForecastingPage = () => {
         duration: 7000,
       });
     }
+
     setLoading(false);
   };
 
@@ -459,14 +341,14 @@ const ForecastingPage = () => {
         </p>
       </div>
 
-      {/* --- NEW: Main Tabs --- */}
+      {/* Main Tabs */}
       <Tabs defaultValue="generate" className="w-full">
         <TabsList className="grid w-full grid-cols-2 md:w-[400px] mb-4">
           <TabsTrigger value="generate">Generate Forecast</TabsTrigger>
           <TabsTrigger value="results">View Forecasts</TabsTrigger>
         </TabsList>
 
-        {/* --- GENERATE TAB --- */}
+        {/* GENERATE TAB */}
         <TabsContent value="generate">
           <Card className="max-w-md">
             <CardHeader>
@@ -555,7 +437,7 @@ const ForecastingPage = () => {
           </Card>
         </TabsContent>
 
-        {/* --- RESULTS TAB --- */}
+        {/* RESULTS TAB */}
         <TabsContent value="results">
           <Card className="shadow-xl rounded-xl mb-8">
             <CardHeader>
@@ -586,10 +468,13 @@ const ForecastingPage = () => {
               {chartProductId && selectedProductForecasts.length > 0 ? (
                 <Line data={chartData} options={chartOptions} height={180} />
               ) : (
-                <div className="text-muted-foreground py-8">Select a product to view its chart.</div>
+                <div className="text-muted-foreground py-8">
+                  Select a product to view its chart.
+                </div>
               )}
             </CardContent>
           </Card>
+          
           <Card className="shadow-xl rounded-xl">
             <CardHeader>
               <CardTitle>Forecast Results</CardTitle>
@@ -668,52 +553,52 @@ const ForecastingPage = () => {
             </CardContent>
           </Card>
         </TabsContent>
-      </Tabs>
 
-      {/* --- View Details Dialog --- */}
-      <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
-        <DialogContent className="max-w-md mx-auto">
-          <DialogHeader>
-            <DialogTitle>Forecast Details</DialogTitle>
-            <DialogDescription>
-              Full details for the forecast generated on{" "}
-              {viewingForecast
-                ? new Date(viewingForecast.forecast_date).toLocaleDateString()
-                : ""}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4 space-y-2">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Product:</span>
-              <span className="font-medium">
-                {viewingForecast?.product_name}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Model Version:</span>
-              <span className="font-medium">
-                {viewingForecast?.model_version || "N/A"}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Generated At:</span>
-              <span className="font-medium">
+        {/* View Details Dialog */}
+        <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
+          <DialogContent className="max-w-md mx-auto">
+            <DialogHeader>
+              <DialogTitle>Forecast Details</DialogTitle>
+              <DialogDescription>
+                Full details for the forecast generated on{" "}
                 {viewingForecast
-                  ? new Date(viewingForecast.generated_at!).toLocaleString()
-                  : "N/A"}
-              </span>
+                  ? new Date(viewingForecast.forecast_date).toLocaleDateString()
+                  : ""}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4 space-y-2">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Product:</span>
+                <span className="font-medium">
+                  {viewingForecast?.product_name}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Model Version:</span>
+                <span className="font-medium">
+                  {viewingForecast?.model_version || "N/A"}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Generated At:</span>
+                <span className="font-medium">
+                  {viewingForecast
+                    ? new Date(viewingForecast.generated_at!).toLocaleString()
+                    : "N/A"}
+                </span>
+              </div>
             </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setViewDialogOpen(false)}
-            >
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setViewDialogOpen(false)}
+              >
+                Close
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </Tabs>
     </div>
   );
 };

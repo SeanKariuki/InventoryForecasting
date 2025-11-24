@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+supabase
+pydantic
+joblib
+numpy
+pandas
+lightgbm
+python-dotenv
