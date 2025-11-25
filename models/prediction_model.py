@@ -204,11 +204,11 @@ def load_prediction_assets():
         # 2. Connect to Supabase
         try:
             supabase = get_supabase()
-            print("✅ Connected to Supabase using existing client")
+            print(" Connected to Supabase using existing client")
         except Exception as e:
             raise RuntimeError(f"Failed to connect to Supabase: {e}")
         
-        print("📊 Fetching historical data from Supabase...")
+        print(" Fetching historical data from Supabase...")
         
         # ============================================================
         # FETCH HISTORICAL DATA (aligned with your schema)
@@ -254,13 +254,13 @@ def load_prediction_assets():
         ).execute()  # Removed .eq('is_active', True) filter
         
         # Debug logging
-        print(f"📦 Products query response: {products_response}")
-        print(f"📦 Products data type: {type(products_response.data)}")
-        print(f"📦 Products data length: {len(products_response.data) if products_response.data else 0}")
+        print(f" Products query response: {products_response}")
+        print(f" Products data type: {type(products_response.data)}")
+        print(f" Products data length: {len(products_response.data) if products_response.data else 0}")
         
         if not products_response.data:
             # Try to get more info about why query failed
-            print("❌ No products returned. Checking table existence...")
+            print(" No products returned. Checking table existence...")
             test_query = supabase.table('products').select('product_id').limit(1).execute()
             print(f"Test query result: {test_query}")
             raise RuntimeError("No products found in database. Check if products table has data.")
@@ -268,8 +268,8 @@ def load_prediction_assets():
         products_df = pd.DataFrame(products_response.data)
         historical_df = pd.DataFrame(response.data)
         
-        print(f"✅ Loaded {len(historical_df)} historical records from database")
-        print(f"✅ Loaded {len(products_df)} products from database")
+        print(f" Loaded {len(historical_df)} historical records from database")
+        print(f" Loaded {len(products_df)} products from database")
         
         # ============================================================
         # DATA TRANSFORMATION
@@ -304,7 +304,7 @@ def load_prediction_assets():
         # Filter out records with zero or negative price
         historical_df = historical_df[historical_df['Price'] > 0]
         
-        print(f"📝 After filtering: {len(historical_df)} valid records")
+        print(f" After filtering: {len(historical_df)} valid records")
         
         # ============================================================
         # ENCODE CATEGORICAL VARIABLES
@@ -325,7 +325,7 @@ def load_prediction_assets():
         # ============================================================
         # CALCULATE LAG AND ROLLING FEATURES
         # ============================================================
-        print("📈 Calculating lag and rolling features...")
+        print(" Calculating lag and rolling features...")
         
         for product_id in HISTORICAL_CONTEXT_DF['Product ID'].unique():
             product_mask = HISTORICAL_CONTEXT_DF['Product ID'] == product_id
@@ -342,10 +342,10 @@ def load_prediction_assets():
                 product_data['Units Sold'].rolling(30, min_periods=1).mean().shift(1).fillna(0)
             )
         
-        print(f"✅ ML Assets and Context Loaded Successfully.")
-        print(f"📅 Date Range: {HISTORICAL_CONTEXT_DF['Date'].min()} to {HISTORICAL_CONTEXT_DF['Date'].max()}")
-        print(f"🏷️  Products Available: {HISTORICAL_CONTEXT_DF['Product ID'].nunique()}")
-        print(f"💰 Price Range: ${HISTORICAL_CONTEXT_DF['Price'].min():.2f} - ${HISTORICAL_CONTEXT_DF['Price'].max():.2f}")
+        print(f" ML Assets and Context Loaded Successfully.")
+        print(f" Date Range: {HISTORICAL_CONTEXT_DF['Date'].min()} to {HISTORICAL_CONTEXT_DF['Date'].max()}")
+        print(f"  Products Available: {HISTORICAL_CONTEXT_DF['Product ID'].nunique()}")
+        print(f" Price Range: ${HISTORICAL_CONTEXT_DF['Price'].min():.2f} - ${HISTORICAL_CONTEXT_DF['Price'].max():.2f}")
         
     except FileNotFoundError as e:
         raise RuntimeError(f"Asset not found: {e}. Check asset paths.")
