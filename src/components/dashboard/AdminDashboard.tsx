@@ -167,6 +167,15 @@ const AdminDashboard = () => {
               <button className="w-full rounded-lg border border-border p-3 text-left text-sm hover:bg-muted" onClick={() => navigate('/users')}>
                 View Users
               </button>
+              <button className="w-full rounded-lg border border-border p-3 text-left text-sm hover:bg-muted" onClick={() => navigate('/reports')}>
+                View Reports
+              </button>
+              <button className="w-full rounded-lg border border-border p-3 text-left text-sm hover:bg-muted" onClick={() => navigate('/sales')}>
+                View Sales
+              </button>
+              <button className="w-full rounded-lg border border-border p-3 text-left text-sm hover:bg-muted" onClick={() => navigate('/products')}>
+                View Products
+              </button>
             </div>
           </CardContent>
         </Card>

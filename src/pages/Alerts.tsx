@@ -30,7 +30,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
-import { Eye, Check } from "lucide-react";
+import { Eye, Check, Search, Trash2 } from "lucide-react";
 
 // Updated interface to include all data
 interface Alert {
@@ -42,6 +42,7 @@ interface Alert {
   is_read: boolean | null;
   is_resolved: boolean | null;
   created_at: string | null;
+  expires_at: string | null;
   product_id: number | null;
   product_name: string | null; // From the joined 'products' table
 }
@@ -60,6 +61,7 @@ const SeverityBadge = ({ severity }: { severity: string | null }) => {
   }
 };
 
+
 const AlertsPage = () => {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [loading, setLoading] = useState(true);
@@ -67,6 +69,11 @@ const AlertsPage = () => {
   const [formLoading, setFormLoading] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
+
+  // Filtering/search state
+  const [search, setSearch] = useState("");
+  const [severityFilter, setSeverityFilter] = useState<string>("all");
+  const [typeFilter, setTypeFilter] = useState<string>("all");
 
   // State for the "Resolve" dialog
   const [resolveDialogOpen, setResolveDialogOpen] = useState(false);
@@ -76,6 +83,10 @@ const AlertsPage = () => {
   const fetchAlerts = async () => {
     setLoading(true);
     setError(null);
+    
+    // Get current timestamp for filtering
+    const now = new Date().toISOString();
+    
     const { data, error } = await supabase
       .from("alerts")
       .select(
@@ -88,10 +99,12 @@ const AlertsPage = () => {
         is_read, 
         created_at,
         is_resolved,
+        expires_at,
         product_id,
         products ( product_name )
       `
       )
+      .or(`expires_at.is.null,expires_at.gte.${now}`) // Only get non-expired alerts
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -111,9 +124,60 @@ const AlertsPage = () => {
     fetchAlerts();
   }, []);
 
+  // Function to clean up old/expired alerts
+  const handleCleanupOldAlerts = async () => {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    
+    const { error } = await supabase
+      .from("alerts")
+      .delete()
+      .lt("created_at", thirtyDaysAgo.toISOString())
+      .eq("is_resolved", true);
+
+    if (error) {
+      toast({
+        title: "Error",
+        description: `Failed to cleanup alerts: ${error.message}`,
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "Success",
+        description: "Old resolved alerts have been cleaned up."
+      });
+      fetchAlerts();
+    }
+  };
+
+  // Unique alert types for filter dropdown
+  const alertTypes = Array.from(new Set(alerts.map(a => a.alert_type).filter(Boolean)));
+  // Unique severities for filter dropdown
+  const severities = Array.from(new Set(alerts.map(a => a.severity).filter(Boolean)));
+
+  // Filtering logic
+  const filterAlerts = (arr: Alert[]) => {
+    return arr.filter(a => {
+      // Severity filter
+      if (severityFilter !== "all" && a.severity !== severityFilter) return false;
+      // Type filter
+      if (typeFilter !== "all" && a.alert_type !== typeFilter) return false;
+      // Search filter (title/message/product)
+      if (search.trim()) {
+        const s = search.trim().toLowerCase();
+        if (!(
+          (a.alert_title && a.alert_title.toLowerCase().includes(s)) ||
+          (a.alert_message && a.alert_message.toLowerCase().includes(s)) ||
+          (a.product_name && a.product_name.toLowerCase().includes(s))
+        )) return false;
+      }
+      return true;
+    });
+  };
+
   // Filter alerts for the tabs
-  const openAlerts = alerts.filter((a) => !a.is_resolved);
-  const resolvedAlerts = alerts.filter((a) => a.is_resolved);
+  const openAlerts = filterAlerts(alerts.filter((a) => !a.is_resolved));
+  const resolvedAlerts = filterAlerts(alerts.filter((a) => a.is_resolved));
 
   // --- ACTIONS ---
 
@@ -287,11 +351,22 @@ const handleViewProduct = (productId: number | null) => {
             View system alerts and notifications
           </p>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleCleanupOldAlerts}
+        >
+          <Trash2 className="h-4 w-4 mr-2" />
+          Cleanup Old Alerts
+        </Button>
       </div>
+
+
+
       <Tabs defaultValue="open">
         <TabsList className="grid w-full grid-cols-2 md:w-[400px] mb-4">
-          <TabsTrigger value="open">Open</TabsTrigger>
-          <TabsTrigger value="resolved">Resolved</TabsTrigger>
+          <TabsTrigger value="open">Open ({openAlerts.length})</TabsTrigger>
+          <TabsTrigger value="resolved">Resolved ({resolvedAlerts.length})</TabsTrigger>
         </TabsList>
         <TabsContent value="open">
           <Card className="shadow-xl rounded-xl">
@@ -303,6 +378,43 @@ const handleViewProduct = (productId: number | null) => {
                 Alerts that require your attention. Click an alert to mark it as
                 read.
               </CardDescription>
+              {/* Filter/Search Controls - moved here */}
+              <div className="flex flex-col md:flex-row md:items-end gap-3 mt-4">
+                <div className="flex-1 flex items-center gap-2">
+                  <div className="relative w-full">
+                    <input
+                      type="text"
+                      className="w-full rounded-md border px-10 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                      placeholder="Search alerts by title, message, or product..."
+                      value={search}
+                      onChange={e => setSearch(e.target.value)}
+                    />
+                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <select
+                    className="rounded-md border px-3 py-2 text-sm bg-background"
+                    value={severityFilter}
+                    onChange={e => setSeverityFilter(e.target.value)}
+                  >
+                    <option value="all">All Severities</option>
+                    {severities.map(s => (
+                      <option key={s} value={s!}>{s!.charAt(0).toUpperCase() + s!.slice(1)}</option>
+                    ))}
+                  </select>
+                  <select
+                    className="rounded-md border px-3 py-2 text-sm bg-background"
+                    value={typeFilter}
+                    onChange={e => setTypeFilter(e.target.value)}
+                  >
+                    <option value="all">All Types</option>
+                    {alertTypes.map(t => (
+                      <option key={t} value={t!}>{t!}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               {loading ? (

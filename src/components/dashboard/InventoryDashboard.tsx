@@ -156,12 +156,13 @@ const InventoryDashboard = () => {
   ];
 
   return (
+
+
     <div className="space-y-6">
       <div>
         <h2 className="text-3xl font-bold tracking-tight">Inventory Dashboard</h2>
         <p className="text-muted-foreground">Monitor and manage your stock levels</p>
       </div>
-
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {statCards.map((stat) => {
@@ -181,9 +182,9 @@ const InventoryDashboard = () => {
         })}
       </div>
 
-      {/* Stock Value by Category & Top 10 Low Stock Items Charts */}
+      {/* Stock Value by Category & Quick Actions side by side */}
       <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Stock Value by Category */}
+        {/* Stock Value by Category - left */}
         <Card>
           <CardHeader>
             <CardTitle>Stock Value by Category</CardTitle>
@@ -224,35 +225,46 @@ const InventoryDashboard = () => {
           </CardContent>
         </Card>
 
-        {/* Top 10 Low Stock Items List */}
+        {/* Quick Actions - right */}
         <Card>
           <CardHeader>
-            <CardTitle>Top 10 Low Stock Items</CardTitle>
-            <CardDescription>Items near or below reorder level</CardDescription>
+            <CardTitle>Quick Actions</CardTitle>
+            <CardDescription>Common inventory tasks</CardDescription>
           </CardHeader>
           <CardContent>
-            {lowStockLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <span className="animate-pulse text-muted-foreground">Loading...</span>
-              </div>
-            ) : lowStockItems.length === 0 ? (
-              <div className="text-muted-foreground py-8">No low stock items found.</div>
-            ) : (
-              <ul className="divide-y divide-muted">
-                {lowStockItems.map((item, idx) => (
-                  <li key={item.name} className="flex items-center justify-between py-3 px-2">
-                    <span className="font-medium text-sm truncate max-w-xs">{item.name}</span>
-                    <span className="text-xs font-mono px-2 py-1 rounded bg-muted/40 text-muted-foreground">{item.quantity}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <div className="space-y-2">
+              <button
+                className="w-full rounded-lg border border-border p-3 text-left text-sm hover:bg-muted"
+                onClick={() => navigate('/inventory')}
+              >
+                View Inventory
+              </button>
+              <button
+                className="w-full rounded-lg border border-border p-3 text-left text-sm hover:bg-muted"
+                onClick={() => navigate('/sales')}
+              >
+                Make a Sale
+              </button>
+              <button
+                className="w-full rounded-lg border border-border p-3 text-left text-sm hover:bg-muted"
+                onClick={() => navigate('/forecasting')}
+              >
+                Generate Forecast
+              </button>
+              <button
+                className="w-full rounded-lg border border-border p-3 text-left text-sm hover:bg-muted"
+                onClick={() => navigate('/reports')}
+              >
+                View Reports
+              </button>
+            </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* ...existing cards for alerts, forecast summary, and recent forecasts... */}
-      <div className="grid gap-4 md:grid-cols-2">
+      {/* Alerts & Top 10 Low Stock Items side by side */}
+      <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Alerts - left */}
         <Card>
           <CardHeader>
             <CardTitle>Alerts</CardTitle>
@@ -289,8 +301,34 @@ const InventoryDashboard = () => {
           </CardContent>
         </Card>
 
-
+        {/* Top 10 Low Stock Items - right */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Top 10 Low Stock Items</CardTitle>
+            <CardDescription>Items near or below reorder level</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {lowStockLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <span className="animate-pulse text-muted-foreground">Loading...</span>
+              </div>
+            ) : lowStockItems.length === 0 ? (
+              <div className="text-muted-foreground py-8">No low stock items found.</div>
+            ) : (
+              <ul className="divide-y divide-muted">
+                {lowStockItems.map((item, idx) => (
+                  <li key={item.name} className="flex items-center justify-between py-3 px-2">
+                    <span className="font-medium text-sm truncate max-w-xs">{item.name}</span>
+                    <span className="text-xs font-mono px-2 py-1 rounded bg-muted/40 text-muted-foreground">{item.quantity}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
       </div>
+
+      {/* ...existing cards for forecast summary, and recent forecasts... */}
     </div>
   );
 };
